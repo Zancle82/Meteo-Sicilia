@@ -1,17 +1,9 @@
-# Meteo Sicilia — PWA 0.1 (prototipo privato)
+# Meteo Sicilia — PWA 0.2
 
-## Funzionalità
-- Previsioni reali tramite Open-Meteo (richiede Internet)
-- Località siciliane e GPS con consenso
-- Prossime 12 ore, 7 giorni, confronto sperimentale ECMWF/GFS/ICON
-- Predisposizione UI per Ecowitt San Giovannello (non ancora collegata)
+Aggiornamento della PWA 0.1. Include grafici delle prossime 24 ore (temperatura, probabilità di pioggia, vento), pressione, raffiche e temperatura percepita, oltre a GPS, località e confronto modelli. Dati via Open-Meteo; Ecowitt non ancora collegata.
 
-## Uso su Android senza computer
-1. Pubblicare **questa cartella** tramite un servizio gratuito di hosting statico che offra HTTPS, per esempio GitHub Pages o Cloudflare Pages. Evitare di includere password o chiavi API nel codice.
-2. Aprire l'URL HTTPS in Chrome Android.
-3. Menu ⋮ > Aggiungi a schermata Home / Installa app.
-4. Autorizzare il GPS solo se desiderato.
+## Aggiornare dal telefono
 
-NOTA: il file `index.html` aperto direttamente come file locale non garantisce GPS, service worker o installazione PWA. Il codice non è ancora un APK. Il sito non implementa accesso privato: un URL pubblicato su hosting statico può essere visitato da altri, anche se non pubblicizzato.
+Su GitHub aprire https://github.com/Zancle82/Meteo-Sicilia/upload/main e caricare i file **estratti** da questo ZIP, selezionando la sovrascrittura dei file esistenti tramite commit. Non caricare lo ZIP stesso. Conservare index.html, app.js, sw.js, manifest.webmanifest e icon.svg nella radice del repository. Dopo il commit attendere il deploy GitHub Pages e riaprire l'app. In caso di vecchia versione, chiudere e riaprire l'app o svuotare i dati del sito.
 
-Open-Meteo: consultare le condizioni per uso non commerciale e i limiti API. Non utilizzare questa versione per allerte di sicurezza.
+Nota: repository GitHub Pages pubblico; non inserire password, token o chiavi API. La geolocalizzazione non viene memorizzata dall'app.
