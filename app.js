@@ -59,7 +59,9 @@ function convertReading(v,kind){
  if(!v||!Number.isFinite(Number(v.value)))return '—';
  let n=Number(v.value),u=String(v.unit||'').toLowerCase().replace(/\s+/g,'');
  if(kind==='temp'){
-  if(u.includes('°f')||u==='f')n=(n-32)*5/9;
+  
+if(u.includes('f') && !u.includes('c'))n=(n-32)*5/9;
+
   else if(u==='k')n-=273.15;
   return n.toFixed(1).replace('.',',')+' °C';
  }
