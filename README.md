@@ -1,9 +1,13 @@
-# Meteo Sicilia — PWA 0.2
+# Meteo Sicilia — PWA 0.2.1
 
-Aggiornamento della PWA 0.1. Include grafici delle prossime 24 ore (temperatura, probabilità di pioggia, vento), pressione, raffiche e temperatura percepita, oltre a GPS, località e confronto modelli. Dati via Open-Meteo; Ecowitt non ancora collegata.
+Aggiornamento correttivo per smartphone Android.
 
-## Aggiornare dal telefono
+- Corretto il calcolo delle coordinate verticali nei grafici (temperature non più fuori scala).
+- Grafici contenuti nelle rispettive schede.
+- Dopo il GPS il menu indica **Posizione GPS** (il nome geografico preciso richiederebbe geocodifica inversa).
+- Cache PWA aggiornata a v021, con preferenza per i file online e fallback offline.
 
-Su GitHub aprire https://github.com/Zancle82/Meteo-Sicilia/upload/main e caricare i file **estratti** da questo ZIP, selezionando la sovrascrittura dei file esistenti tramite commit. Non caricare lo ZIP stesso. Conservare index.html, app.js, sw.js, manifest.webmanifest e icon.svg nella radice del repository. Dopo il commit attendere il deploy GitHub Pages e riaprire l'app. In caso di vecchia versione, chiudere e riaprire l'app o svuotare i dati del sito.
+## Pubblicazione
+Carica i sei file nella **radice** del repository GitHub Pages, sovrascrivendo quelli della 0.2. Dopo il commit, attendi la pubblicazione e riapri la PWA.
 
-Nota: repository GitHub Pages pubblico; non inserire password, token o chiavi API. La geolocalizzazione non viene memorizzata dall'app.
+Non è stato eseguito un test su dispositivo reale. La stazione Ecowitt non è ancora collegata.
