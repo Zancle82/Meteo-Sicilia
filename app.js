@@ -52,3 +52,55 @@ $('city').addEventListener('change',e=>{const name=e.target.value;if(places[name
 $('gps').addEventListener('click',()=>{if(!navigator.geolocation){$('status').textContent='GPS non supportato dal browser';return}$('status').textContent='Richiesta posizione GPS…';navigator.geolocation.getCurrentPosition(p=>{const {latitude:lat,longitude:lon}=p.coords;if(lat<35.4||lat>39.0||lon<11.8||lon>16.0){$('status').textContent='La posizione sembra fuori dall’area siciliana. Scegli una città.';return}$('city').value='gps';load(lat,lon,'Posizione GPS')},()=>{$('status').textContent='Posizione non disponibile. Puoi scegliere una città.'},{enableHighAccuracy:true,timeout:12000,maximumAge:600000})});
 if('serviceWorker'in navigator&&location.protocol==='https:')navigator.serviceWorker.register('./sw.js').catch(()=>{});
 load(...places.Messina,'Messina');
+
+// Ecowitt station: independent from forecast and GPS selection.
+const STATION_URL='https://meteo-sicilia-ecowitt.zancle1982.workers.dev/meteo';
+function convertReading(v,kind){
+ if(!v||!Number.isFinite(Number(v.value)))return '—';
+ let n=Number(v.value),u=String(v.unit||'').toLowerCase().replace(/\s+/g,'');
+ if(kind==='temp'){
+  if(u.includes('°f')||u==='f')n=(n-32)*5/9;
+  else if(u==='k')n-=273.15;
+  return n.toFixed(1).replace('.',',')+' °C';
+ }
+ if(kind==='humidity')return Math.round(n)+'%';
+ if(kind==='wind'){
+  if(u.includes('mph'))n*=1.609344;
+  else if(u.includes('m/s'))n*=3.6;
+  else if(u.includes('knot'))n*=1.852;
+  return n.toFixed(1).replace('.',',')+' km/h';
+ }
+ if(kind==='pressure'){
+  if(u.includes('inhg'))n*=33.8638867;
+  else if(u==='pa')n/=100;
+  else if(u==='kpa')n*=10;
+  return Math.round(n)+' hPa';
+ }
+ if(kind==='rain'){
+  if(u.includes('in'))n*=25.4;
+  return n.toFixed(1).replace('.',',')+' mm'+(u.includes('/hr')||u.includes('/h')?'/h':'');
+ }
+ return String(n);
+}
+let stationBusy=false;
+async function loadStation(){
+ if(stationBusy)return;stationBusy=true;
+ $('station-status').textContent='Aggiornamento dati reali…';
+ try{
+  const controller=new AbortController();const timeout=setTimeout(()=>controller.abort(),12000);
+  let response;
+  try{response=await fetch(STATION_URL,{cache:'no-store',signal:controller.signal})}finally{clearTimeout(timeout)}
+  if(!response.ok)throw Error('Servizio temporaneamente non disponibile');
+  const payload=await response.json();if(!payload.measurements)throw Error('Formato dati non riconosciuto');
+  const m=payload.measurements;
+  const entries=[['Temperatura','temperature','temp'],['Umidità','humidity','humidity'],['Percepita','feelsLike','temp'],['Vento','windSpeed','wind'],['Raffiche','windGust','wind'],['Pressione','pressure','pressure'],['Pioggia istantanea','rainRate','rain'],['Pioggia oggi','rainToday','rain']];
+  $('station-grid').replaceChildren(...entries.map(([label,key,kind])=>{const box=document.createElement('div');box.className='station-metric';const small=document.createElement('small');small.textContent=label;const strong=document.createElement('strong');strong.textContent=convertReading(m[key],kind);box.append(small,strong);return box}));
+  const times=Object.values(m).map(v=>Number(v?.time)).filter(v=>Number.isFinite(v)&&v>0);
+  const timestamp=times.length?Math.max(...times)*1000:Date.parse(payload.fetchedAt);
+  $('station-time').textContent=Number.isFinite(timestamp)?'Ultima misurazione: '+new Date(timestamp).toLocaleString('it-IT',{timeZone:'Europe/Rome',day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}):'Ora dell’ultima misurazione non disponibile';
+  $('station-status').textContent='● Stazione collegata · misurazioni Ecowitt';
+ }catch(e){$('station-status').textContent='Stazione temporaneamente non disponibile. '+e.message}
+ finally{stationBusy=false}
+}
+$('station-refresh').addEventListener('click',loadStation);
+loadStation();setInterval(()=>{if(!document.hidden)loadStation()},60000);
