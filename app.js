@@ -57,11 +57,11 @@ load(...places.Messina,'Messina');
 const STATION_URL='https://meteo-sicilia-ecowitt.zancle1982.workers.dev/meteo';
 function convertReading(v,kind){
  if(!v||v.value===null||v.value===undefined||v.value===''||!Number.isFinite(Number(v.value)))return '—';
- let n=Number(v.value),u=String(v.unit||'').toLowerCase().replace(/\s+/g,'');
+ let n=Number(v.value),u=String(v.unit||'').normalize('NFKC').toLowerCase().replace(/\s+/g,'');
  if(kind==='temp'){
   // Ecowitt may send Fahrenheit as °F, ºF, ℉ or other Unicode variants.
   const normalizedUnit=u.normalize('NFKC').replace(/[^a-z]/g,'');
-  if(normalizedUnit==='f'||normalizedUnit==='fahrenheit')n=(n-32)*5/9;
+  if(normalizedUnit==='f'||normalizedUnit==='of'||normalizedUnit==='fahrenheit')n=(n-32)*5/9;
   else if(normalizedUnit==='k'||normalizedUnit==='kelvin')n-=273.15;
   else if(normalizedUnit!=='c'&&normalizedUnit!=='celsius')return '—';
   return n.toFixed(1).replace('.',',')+' °C';
@@ -117,8 +117,8 @@ let comparisonCache=null,comparisonPending=null,comparisonSeq=0;
 function stationCelsius(reading){
  if(!reading||reading.value===null||reading.value===undefined)return NaN;
  let n=Number(reading.value);if(!Number.isFinite(n))return NaN;
- const u=String(reading.unit||'').toLowerCase().normalize('NFKC').replace(/[^a-z]/g,'');
- if(u==='f'||u==='fahrenheit')return (n-32)*5/9;
+ const u=String(reading.unit||'').normalize('NFKC').toLowerCase().replace(/[^a-z]/g,'');
+ if(u==='f'||u==='of'||u==='fahrenheit')return (n-32)*5/9;
  if(u==='k'||u==='kelvin')return n-273.15;
  return u==='c'||u==='celsius'?n:NaN;
 }
