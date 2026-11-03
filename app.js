@@ -56,13 +56,14 @@ load(...places.Messina,'Messina');
 // Ecowitt station: independent from forecast and GPS selection.
 const STATION_URL='https://meteo-sicilia-ecowitt.zancle1982.workers.dev/meteo';
 function convertReading(v,kind){
- if(!v||!Number.isFinite(Number(v.value)))return '—';
+ if(!v||v.value===null||v.value===undefined||v.value===''||!Number.isFinite(Number(v.value)))return '—';
  let n=Number(v.value),u=String(v.unit||'').toLowerCase().replace(/\s+/g,'');
  if(kind==='temp'){
-  
-if(u.includes('f') && !u.includes('c'))n=(n-32)*5/9;
-
-  else if(u==='k')n-=273.15;
+  // Ecowitt may send Fahrenheit as °F, ºF, ℉ or other Unicode variants.
+  const normalizedUnit=u.normalize('NFKC').replace(/[^a-z]/g,'');
+  if(normalizedUnit==='f'||normalizedUnit==='fahrenheit')n=(n-32)*5/9;
+  else if(normalizedUnit==='k'||normalizedUnit==='kelvin')n-=273.15;
+  else if(normalizedUnit!=='c'&&normalizedUnit!=='celsius')return '—';
   return n.toFixed(1).replace('.',',')+' °C';
  }
  if(kind==='humidity')return Math.round(n)+'%';
@@ -101,8 +102,70 @@ async function loadStation(){
   const timestamp=times.length?Math.max(...times)*1000:Date.parse(payload.fetchedAt);
   $('station-time').textContent=Number.isFinite(timestamp)?'Ultima misurazione: '+new Date(timestamp).toLocaleString('it-IT',{timeZone:'Europe/Rome',day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}):'Ora dell’ultima misurazione non disponibile';
   $('station-status').textContent='● Stazione collegata · misurazioni Ecowitt';
+   updateStationComparison(m.temperature,timestamp);
  }catch(e){$('station-status').textContent='Stazione temporaneamente non disponibile. '+e.message}
  finally{stationBusy=false}
 }
 $('station-refresh').addEventListener('click',loadStation);
 loadStation();setInterval(()=>{if(!document.hidden)loadStation()},60000);
+
+
+// 0.4: independent same-location, same-hour comparison; no accuracy ranking.
+const STATION_COORDS=places['San Giovannello'];
+const COMPARE_MODELS=[['ECMWF IFS','ecmwf_ifs025'],['GFS','gfs_seamless'],['ICON','icon_seamless']];
+let comparisonCache=null,comparisonPending=null,comparisonSeq=0;
+function stationCelsius(reading){
+ if(!reading||reading.value===null||reading.value===undefined)return NaN;
+ let n=Number(reading.value);if(!Number.isFinite(n))return NaN;
+ const u=String(reading.unit||'').toLowerCase().normalize('NFKC').replace(/[^a-z]/g,'');
+ if(u==='f'||u==='fahrenheit')return (n-32)*5/9;
+ if(u==='k'||u==='kelvin')return n-273.15;
+ return u==='c'||u==='celsius'?n:NaN;
+}
+function stationLocalHour(timestamp){
+ const parts=new Intl.DateTimeFormat('en-GB',{timeZone:'Europe/Rome',year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',hourCycle:'h23'}).formatToParts(new Date(timestamp));
+ const v=Object.fromEntries(parts.map(p=>[p.type,p.value]));
+ return `${v.year}-${v.month}-${v.day}T${v.hour}`;
+}
+async function getComparisonForecasts(){
+ if(comparisonCache&&Date.now()-comparisonCache.at<15*60*1000)return comparisonCache.results;
+ if(comparisonPending)return comparisonPending;
+ comparisonPending=Promise.allSettled(COMPARE_MODELS.map(async ([name,model])=>{
+  const d=await get(url(...STATION_COORDS,model));
+  return {name,times:d.hourly?.time||[],temps:d.hourly?.temperature_2m||[]};
+ })).then(results=>{comparisonCache={at:Date.now(),results};return results}).finally(()=>{comparisonPending=null});
+ return comparisonPending;
+}
+async function updateStationComparison(reading,timestamp){
+ const seq=++comparisonSeq,root=$('station-comparison'),status=$('comparison-status');
+ const observed=stationCelsius(reading);
+ if(!Number.isFinite(observed)||!Number.isFinite(timestamp)){
+  root.replaceChildren();status.textContent='Temperatura o orario Ecowitt non disponibili.';return;
+ }
+ const hour=stationLocalHour(timestamp);
+ const stale=Date.now()-timestamp>30*60*1000;
+ status.textContent='Confronto dei modelli in caricamento…';
+ try{
+  const results=await getComparisonForecasts();if(seq!==comparisonSeq)return;
+  const rows=[{name:'Ecowitt · osservata',temp:observed,delta:null}];
+  for(let i=0;i<COMPARE_MODELS.length;i++){
+   const result=results[i];let temp=NaN;
+   if(result.status==='fulfilled'){
+    const {times,temps}=result.value;
+    const idx=times.findIndex(t=>t.slice(0,13)===hour);
+    if(idx>=0&&temps[idx]!==null&&temps[idx]!==undefined)temp=Number(temps[idx]);
+   }
+   rows.push({name:COMPARE_MODELS[i][0],temp,delta:Number.isFinite(temp)?temp-observed:null});
+  }
+  root.replaceChildren(...rows.map(r=>{
+   const row=document.createElement('div');row.className='comparison-row';
+   const name=document.createElement('span');name.textContent=r.name;
+   const right=document.createElement('div');right.className='comparison-values';
+   const temp=document.createElement('strong');temp.textContent=Number.isFinite(r.temp)?r.temp.toFixed(1).replace('.',',')+' °C':'Non disponibile';right.append(temp);
+   if(r.delta!==null){const diff=document.createElement('small');diff.textContent=(r.delta>0?'+':'')+r.delta.toFixed(1).replace('.',',')+' °C rispetto alla stazione';right.append(diff)}
+   row.append(name,right);return row;
+  }));
+  const timeLabel=new Date(timestamp).toLocaleString('it-IT',{timeZone:'Europe/Rome',day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'});
+  status.textContent=`Stazione: ${timeLabel} · modelli confrontati per l'ora ${hour.slice(11)}:00${stale?' · attenzione: misura non recente':''}`;
+ }catch(e){if(seq===comparisonSeq)status.textContent='Confronto temporaneamente non disponibile.'}
+}
