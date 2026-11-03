@@ -20,29 +20,51 @@ function renderCharts(hourly,start){
   const values=(hourly[spec.key]||[]).slice(start,start+24).map(v=>v===null||v===undefined?NaN:Number(v));
   const times=(hourly.time||[]).slice(start,start+values.length);
   const card=document.createElement('div');card.className='chart-card';
-  const heading=document.createElement('div');heading.className='chart-title';heading.textContent=spec.title;card.append(heading);
+  const heading=document.createElement('div');heading.className='chart-title';heading.textContent=spec.title+' · prossime 24 ore';card.append(heading);
   const valid=values.filter(Number.isFinite);
   if(valid.length<2){const note=document.createElement('p');note.className='muted';note.textContent='Dati non disponibili per questo grafico.';card.append(note);root.append(card);continue}
-  let min=Math.min(...valid),max=Math.max(...valid);
+  const min=Math.min(...valid),max=Math.max(...valid);
   let low=spec.fixed?spec.fixed[0]:spec.zero?0:Math.floor(min-1);
   let high=spec.fixed?spec.fixed[1]:spec.zero?Math.max(5,Math.ceil(max/5)*5):Math.ceil(max+1);
   if(high<=low)high=low+1;
-  const W=360,H=210,left=52,right=12,top=12,bottom=34;
+  // Scroll horizontally on small screens: each hour gets its own legible position.
+  const W=Math.max(720,values.length*34),H=230,left=48,right=18,top=18,bottom=43;
   const x=i=>left+i*(W-left-right)/Math.max(1,values.length-1);
   const y=v=>top+(high-v)*(H-top-bottom)/(high-low);
-  const svg=make('svg',{viewBox:`0 0 ${W} ${H}`,class:'chart',role:'img','aria-label':spec.title+' con scala valori e orari',preserveAspectRatio:'xMidYMid meet'});
+  const svg=make('svg',{viewBox:`0 0 ${W} ${H}`,width:W,height:H,role:'img','aria-label':spec.title+' con orari ogni due ore e punti orari'});
   for(let j=0;j<=4;j++){
    const val=low+(high-low)*(4-j)/4,yy=y(val);
    svg.append(make('line',{x1:left,y1:yy,x2:W-right,y2:yy,stroke:'#46637c','stroke-width':0.8,'stroke-dasharray':j===4?'':'3 4'}));
-   svg.append(make('text',{x:left-7,y:yy+4,fill:'#c3d8eb','font-size':11,'text-anchor':'end'},(spec.unit==='%'||spec.unit==='°C'?Math.round(val):Math.round(val))+spec.unit));
+   svg.append(make('text',{x:left-6,y:yy+4,fill:'#c3d8eb','font-size':11,'text-anchor':'end'},Math.round(val)+spec.unit));
   }
-  const marks=[0,Math.floor((values.length-1)/3),Math.floor(2*(values.length-1)/3),values.length-1];
-  [...new Set(marks)].forEach(i=>svg.append(make('text',{x:x(i),y:H-9,fill:'#c3d8eb','font-size':11,'text-anchor':i===0?'start':i===values.length-1?'end':'middle'},times[i]?.slice(11,16)||'')));
-  let segment=[];const flush=()=>{if(segment.length>1)svg.append(make('polyline',{points:segment.join(' '),fill:'none',stroke:spec.color,'stroke-width':3,'stroke-linejoin':'round','stroke-linecap':'round'}));segment=[]};
-  values.forEach((v,i)=>{if(Number.isFinite(v)){segment.push(`${x(i).toFixed(1)},${y(v).toFixed(1)}`)}else flush()});flush();
-  svg.append(make('circle',{cx:x(values.findIndex(Number.isFinite)),cy:y(values.find(Number.isFinite)),r:3.5,fill:spec.color}));
-  card.append(svg);
-  const summary=document.createElement('div');summary.className='chart-labels';summary.textContent=`Min ${Math.round(min)}${spec.unit} · Max ${Math.round(max)}${spec.unit} · ${valid.length} rilevazioni previste`;card.append(summary);root.append(card);
+  times.forEach((t,i)=>{
+   if(i%2!==0 && i!==times.length-1)return;
+   const xx=x(i);
+   svg.append(make('line',{x1:xx,y1:top,x2:xx,y2:H-bottom,stroke:'#46637c','stroke-width':0.7,'stroke-dasharray':'2 5'}));
+   svg.append(make('text',{x:xx,y:H-20,fill:'#c3d8eb','font-size':11,'text-anchor':'middle'},t.slice(11,16)));
+   if(t.slice(11,13)==='00')svg.append(make('text',{x:xx,y:H-6,fill:'#c3d8eb','font-size':10,'text-anchor':'middle'},t.slice(8,10)+'/'+t.slice(5,7)));
+  });
+  let segment=[];const flush=()=>{if(segment.length>1)svg.append(make('polyline',{points:segment.join(' '),fill:'none',stroke:spec.color,'stroke-width':2.5,'stroke-linejoin':'round','stroke-linecap':'round'}));segment=[]};
+  values.forEach((v,i)=>{if(Number.isFinite(v))segment.push(`${x(i).toFixed(1)},${y(v).toFixed(1)}`);else flush()});flush();
+  const detail=document.createElement('div');detail.className='chart-labels';detail.style.marginTop='8px';detail.setAttribute('aria-live','polite');
+  const format=v=>v.toLocaleString('it-IT',{maximumFractionDigits:1})+spec.unit;
+  const select=i=>{
+   if(!Number.isFinite(values[i]))return;
+   detail.textContent=`${times[i].slice(8,10)}/${times[i].slice(5,7)} alle ${times[i].slice(11,16)} · ${format(values[i])}`;
+   dots.forEach((dot,k)=>dot.setAttribute('r',k===i?'6':'3.5'));
+  };
+  const dots=[];
+  values.forEach((v,i)=>{
+   if(!Number.isFinite(v))return;
+   const dot=make('circle',{cx:x(i),cy:y(v),r:3.5,fill:spec.color,stroke:'#0b1d30','stroke-width':1});
+   const hit=make('circle',{cx:x(i),cy:y(v),r:14,fill:'transparent',tabindex:0,role:'button','aria-label':`${times[i].slice(11,16)}: ${format(v)}`});
+   hit.style.cursor='pointer';hit.addEventListener('click',()=>select(i));hit.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();select(i)}});
+   svg.append(dot,hit);dots[i]=dot;
+  });
+  const scroller=document.createElement('div');scroller.style.cssText='overflow-x:auto;max-width:100%;touch-action:pan-x pan-y;overscroll-behavior-x:contain';scroller.append(svg);card.append(scroller);
+  const hint=document.createElement('div');hint.className='muted';hint.style.fontSize='12px';hint.textContent='Scorri lateralmente per vedere tutte le ore · tocca un punto per il valore esatto';card.append(hint,detail);
+  const first=values.findIndex(Number.isFinite);if(first>=0)select(first);
+  const summary=document.createElement('div');summary.className='chart-labels';summary.textContent=`Min ${format(min)} · Max ${format(max)} · ${valid.length} valori orari previsti`;card.append(summary);root.append(card);
  }
 }
 
