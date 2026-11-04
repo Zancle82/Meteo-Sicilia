@@ -189,3 +189,16 @@ async function updateStationComparison(reading,timestamp){
   status.textContent=`Stazione: ${timeLabel} · modelli confrontati per l'ora ${hour.slice(11)}:00${stale?' · attenzione: misura non recente':''}`;
  }catch(e){if(seq===comparisonSeq)status.textContent='Confronto temporaneamente non disponibile.'}
 }
+
+// 0.5 navigation: keep weather and station updates active while switching views.
+(function initTabs(){
+ const buttons=[...document.querySelectorAll('[data-tab]')];
+ function activate(name){
+  if(!buttons.some(b=>b.dataset.tab===name))name='previsioni';
+  buttons.forEach(b=>{const active=b.dataset.tab===name;b.setAttribute('aria-selected',String(active));b.tabIndex=active?0:-1;document.getElementById('panel-'+b.dataset.tab).hidden=!active;});
+  if(location.hash!=='#'+name)history.replaceState(null,'','#'+name);
+ }
+ buttons.forEach((b,i)=>{b.addEventListener('click',()=>activate(b.dataset.tab));b.addEventListener('keydown',e=>{if(e.key!=='ArrowRight'&&e.key!=='ArrowLeft')return;e.preventDefault();const next=buttons[(i+(e.key==='ArrowRight'?1:-1)+buttons.length)%buttons.length];activate(next.dataset.tab);next.focus();});});
+ window.addEventListener('hashchange',()=>activate(location.hash.slice(1)));
+ activate(location.hash.slice(1)||'previsioni');
+})();
