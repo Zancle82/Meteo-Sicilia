@@ -74,13 +74,30 @@ async function models(lat,lon,id){
  const key=lat.toFixed(3)+','+lon.toFixed(3);if(modelBusy||modelKey===key)return;
  modelBusy=true;const el=$('models');el.textContent='Caricamento modelli…';
  const u=new URL(api);u.searchParams.set('latitude',lat);u.searchParams.set('longitude',lon);u.searchParams.set('timezone','Europe/Rome');u.searchParams.set('forecast_days','3');u.searchParams.set('hourly','temperature_2m,precipitation,wind_speed_10m');
- const date=new Date(Date.now()+24*3600000);const keyTime=new Intl.DateTimeFormat('sv-SE',{timeZone:'Europe/Rome',year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',hourCycle:'h23'}).format(date).replace(' ','T');
+ const date=new Date(Date.now()+24*3600000);
+ const keyTime=new Intl.DateTimeFormat('sv-SE',{timeZone:'Europe/Rome',year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',hourCycle:'h23'}).format(date).replace(' ','T')+':00';
+ const targetMs=new Date(keyTime).getTime();
  try{
- const data=await Promise.allSettled(FORECAST_MODELS.map(async ([name,model])=>{const mu=new URL(u.toString());mu.searchParams.set('models',model);const d=await get(mu.toString());const h=d.hourly||{};const times=h.time||[];let best=-1,delta=Infinity;times.forEach((t,i)=>{const x=Math.abs(new Date(t).getTime()-new Date(keyTime).getTime());if(x<delta){best=i;delta=x}});if(best<0||delta>10800000||!Number.isFinite(h.temperature_2m?.[best]))throw Error('Non disponibile');return {temp:h.temperature_2m[best],rain:h.precipitation?.[best],wind:h.wind_speed_10m?.[best]}}));
+ const data=await Promise.allSettled(FORECAST_MODELS.map(async ([name,model])=>{
+  const mu=new URL(u.toString());mu.searchParams.set('models',model);
+  const d=await get(mu.toString());const h=d.hourly||{},times=h.time||[];
+  // Individual and multi-model API responses may use either plain or model-suffixed field names.
+  const field=base=>h[base]||h[base+'_'+model]||Object.entries(h).find(([k,v])=>k.startsWith(base+'_')&&Array.isArray(v))?.[1]||[];
+  const temperatures=field('temperature_2m'),rain=field('precipitation'),wind=field('wind_speed_10m');
+  let best=-1,delta=Infinity;
+  times.forEach((t,i)=>{
+   const parsed=Date.parse(t.length===13?t+':00':t);
+   const diff=Math.abs(parsed-targetMs);
+   if(Number.isFinite(diff)&&diff<delta){best=i;delta=diff}
+  });
+  if(best<0||delta>10800000||!Number.isFinite(temperatures[best]))throw Error('Nessun dato utile per '+model);
+  return {temp:temperatures[best],rain:rain[best],wind:wind[best]};
+ }));
+
  if(id!==serial)return;
  el.replaceChildren();const ok=data.filter(x=>x.status==='fulfilled').map(x=>x.value.temp).sort((a,b)=>a-b);const note=document.createElement('p');note.className='notice';note.textContent='Previsioni a circa 24 ore ('+keyTime.replace('T',' alle ')+') · '+ok.length+' modelli disponibili su '+FORECAST_MODELS.length;el.append(note);
  if(ok.length>=3){const med=ok.length%2?ok[(ok.length-1)/2]:(ok[ok.length/2-1]+ok[ok.length/2])/2;const summary=document.createElement('p');summary.className='notice';summary.textContent='Mediana: '+med.toFixed(1)+'°C · intervallo: '+ok[0].toFixed(1)+'–'+ok[ok.length-1].toFixed(1)+'°C. Non è una previsione validata.';el.append(summary)}
- data.forEach((r,i)=>{const row=document.createElement('div');row.className='model';const title=document.createElement('span');title.textContent=FORECAST_MODELS[i][0];const value=document.createElement('strong');const v=r.status==='fulfilled'?r.value:null;value.textContent=v? v.temp.toFixed(1)+'°C · '+(Number.isFinite(v.rain)?v.rain.toFixed(1)+' mm':'—')+' · '+(Number.isFinite(v.wind)?Math.round(v.wind)+' km/h':'—'):'Non disponibile';row.append(title,value);el.append(row)});
+ data.forEach((r,i)=>{const row=document.createElement('div');row.className='model';const title=document.createElement('span');title.textContent=FORECAST_MODELS[i][0];const value=document.createElement('strong');const v=r.status==='fulfilled'?r.value:null;value.textContent=v? v.temp.toFixed(1)+'°C · '+(Number.isFinite(v.rain)?v.rain.toFixed(1)+' mm':'—')+' · '+(Number.isFinite(v.wind)?Math.round(v.wind)+' km/h':'—') :'Non disponibile';row.append(title,value);el.append(row)});
  const legend=document.createElement('p');legend.className='notice';legend.textContent='Temperatura · pioggia · vento. I modelli hanno risoluzioni e aggiornamenti diversi. Accesso tramite Open-Meteo, per uso non commerciale.';el.append(legend);modelKey=key;
  }finally{modelBusy=false}
 }
