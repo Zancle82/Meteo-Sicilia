@@ -68,7 +68,7 @@ function renderCharts(hourly,start){
  }
 }
 
-const FORECAST_MODELS=[['ECMWF IFS','ecmwf_ifs'],['ECMWF AIFS (AI)','ecmwf_aifs025_single'],['NOAA GFS','gfs_seamless'],['DWD ICON Europa','icon_eu'],['Météo-France ARPEGE','meteofrance_arpege_europe'],['Canada GEM','gem_global'],['ItaliaMeteo ICON-2I','italiameteo_arpae_icon_2i']];
+const FORECAST_MODELS=[['ECMWF IFS','ecmwf_ifs'],['ECMWF AIFS (AI)','ecmwf_aifs025_single'],['NOAA GFS','gfs_seamless'],['DWD ICON Europa','icon_eu'],['Météo-France ARPEGE','meteofrance_arpege_europe'],['Canada GEM','gem_global'],['ItaliaMeteo ICON-2I','italia_meteo_arpae_icon_2i']];
 let modelCoords=[...places.Messina],modelKey='',modelBusy=false,modelRequest=0;
 const HORIZONS=[6,12,24,48,72];
 const median=values=>{const a=values.filter(Number.isFinite).sort((x,y)=>x-y);if(!a.length)return null;const i=Math.floor(a.length/2);return a.length%2?a[i]:(a[i-1]+a[i])/2};
