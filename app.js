@@ -69,36 +69,58 @@ function renderCharts(hourly,start){
 }
 
 const FORECAST_MODELS=[['ECMWF IFS','ecmwf_ifs'],['ECMWF AIFS (AI)','ecmwf_aifs025_single'],['NOAA GFS','gfs_seamless'],['DWD ICON Europa','icon_eu'],['Météo-France ARPEGE','meteofrance_arpege_europe'],['Canada GEM','gem_global'],['ItaliaMeteo ICON-2I','italiameteo_arpae_icon_2i']];
-let modelCoords=[...places.Messina],modelKey='',modelBusy=false;
+let modelCoords=[...places.Messina],modelKey='',modelBusy=false,modelRequest=0;
+const HORIZONS=[6,12,24,48,72];
+const median=values=>{const a=values.filter(Number.isFinite).sort((x,y)=>x-y);if(!a.length)return null;const i=Math.floor(a.length/2);return a.length%2?a[i]:(a[i-1]+a[i])/2};
+const metric=(n,unit,digits=1)=>Number.isFinite(n)?n.toFixed(digits)+unit:'—';
+function modelTime(date){return new Intl.DateTimeFormat('sv-SE',{timeZone:'Europe/Rome',year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',hourCycle:'h23'}).format(date).replace(' ','T')+':00'}
 async function models(lat,lon,id){
- const key=lat.toFixed(3)+','+lon.toFixed(3);if(modelBusy||modelKey===key)return;
- modelBusy=true;const el=$('models');el.textContent='Caricamento modelli…';
- const u=new URL(api);u.searchParams.set('latitude',lat);u.searchParams.set('longitude',lon);u.searchParams.set('timezone','Europe/Rome');u.searchParams.set('forecast_days','3');u.searchParams.set('hourly','temperature_2m,precipitation,wind_speed_10m');
- const date=new Date(Date.now()+24*3600000);
- const keyTime=new Intl.DateTimeFormat('sv-SE',{timeZone:'Europe/Rome',year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',hourCycle:'h23'}).format(date).replace(' ','T')+':00';
- const targetMs=new Date(keyTime).getTime();
+ const key=lat.toFixed(3)+','+lon.toFixed(3);
+ if(modelKey===key||modelBusy)return;
+ modelBusy=true;const request=++modelRequest,el=$('models');el.textContent='Caricamento dei modelli…';
+ const u=new URL(api);
+ Object.entries({latitude:lat,longitude:lon,timezone:'Europe/Rome',forecast_days:5,hourly:'temperature_2m,precipitation,wind_speed_10m'}).forEach(([k,v])=>u.searchParams.set(k,v));
+ const targetTimes=HORIZONS.map(h=>({h,time:modelTime(new Date(Date.now()+h*3600000))}));
+ const nearest=(times,target)=>{const index=times.indexOf(target);if(index>=0)return index;const ms=Date.parse(target);let best=-1,delta=Infinity;times.forEach((t,i)=>{const d=Math.abs(Date.parse(t)-ms);if(d<delta){delta=d;best=i}});return delta<=3*3600000?best:-1};
  try{
- const data=await Promise.allSettled(FORECAST_MODELS.map(async ([name,model])=>{
-  const mu=new URL(u.toString());mu.searchParams.set('models',model);
-  const d=await get(mu.toString());const h=d.hourly||{},times=h.time||[];
-  // Individual and multi-model API responses may use either plain or model-suffixed field names.
-  const field=base=>h[base]||h[base+'_'+model]||Object.entries(h).find(([k,v])=>k.startsWith(base+'_')&&Array.isArray(v))?.[1]||[];
-  const temperatures=field('temperature_2m'),rain=field('precipitation'),wind=field('wind_speed_10m');
-  let best=-1,delta=Infinity;
-  times.forEach((t,i)=>{
-   const parsed=Date.parse(t.length===13?t+':00':t);
-   const diff=Math.abs(parsed-targetMs);
-   if(Number.isFinite(diff)&&diff<delta){best=i;delta=diff}
-  });
-  if(best<0||delta>10800000||!Number.isFinite(temperatures[best]))throw Error('Nessun dato utile per '+model);
-  return {temp:temperatures[best],rain:rain[best],wind:wind[best]};
+ const responses=await Promise.allSettled(FORECAST_MODELS.map(async ([name,model])=>{
+  const mu=new URL(u);mu.searchParams.set('models',model);
+  const d=await get(mu.toString()),hourly=d.hourly||{},times=hourly.time||[];
+  const field=base=>hourly[base]||hourly[base+'_'+model]||Object.entries(hourly).find(([k,v])=>k.startsWith(base+'_')&&Array.isArray(v))?.[1]||[];
+  const temp=field('temperature_2m'),rain=field('precipitation'),wind=field('wind_speed_10m');
+  const values=targetTimes.map(({h,time})=>{const i=nearest(times,time);return {h,temp:i>=0?temp[i]:null,rain:i>=0?rain[i]:null,wind:i>=0?wind[i]:null}});
+  if(!values.some(v=>Number.isFinite(v.temp)))throw Error('Nessun dato');
+  return {name,model,values};
  }));
-
- if(id!==serial)return;
- el.replaceChildren();const ok=data.filter(x=>x.status==='fulfilled').map(x=>x.value.temp).sort((a,b)=>a-b);const note=document.createElement('p');note.className='notice';note.textContent='Previsioni a circa 24 ore ('+keyTime.replace('T',' alle ')+') · '+ok.length+' modelli disponibili su '+FORECAST_MODELS.length;el.append(note);
- if(ok.length>=3){const med=ok.length%2?ok[(ok.length-1)/2]:(ok[ok.length/2-1]+ok[ok.length/2])/2;const summary=document.createElement('p');summary.className='notice';summary.textContent='Mediana: '+med.toFixed(1)+'°C · intervallo: '+ok[0].toFixed(1)+'–'+ok[ok.length-1].toFixed(1)+'°C. Non è una previsione validata.';el.append(summary)}
- data.forEach((r,i)=>{const row=document.createElement('div');row.className='model';const title=document.createElement('span');title.textContent=FORECAST_MODELS[i][0];const value=document.createElement('strong');const v=r.status==='fulfilled'?r.value:null;value.textContent=v? v.temp.toFixed(1)+'°C · '+(Number.isFinite(v.rain)?v.rain.toFixed(1)+' mm':'—')+' · '+(Number.isFinite(v.wind)?Math.round(v.wind)+' km/h':'—') :'Non disponibile';row.append(title,value);el.append(row)});
- const legend=document.createElement('p');legend.className='notice';legend.textContent='Temperatura · pioggia · vento. I modelli hanno risoluzioni e aggiornamenti diversi. Accesso tramite Open-Meteo, per uso non commerciale.';el.append(legend);modelKey=key;
+ if(id!==serial||request!==modelRequest)return;
+ const good=responses.filter(r=>r.status==='fulfilled').map(r=>r.value);
+ el.replaceChildren();
+ const intro=document.createElement('p');intro.className='notice';intro.textContent=good.length+' modelli disponibili su '+FORECAST_MODELS.length+' · dati per la località selezionata.';el.append(intro);
+ if(!good.length){const msg=document.createElement('p');msg.className='notice';msg.textContent='Nessun modello ha restituito dati. Riprova più tardi.';el.append(msg);return}
+ const controls=document.createElement('div');controls.className='horizon-controls';controls.setAttribute('role','group');controls.setAttribute('aria-label','Orizzonte previsionale');
+ const output=document.createElement('div');
+ function display(h){
+  controls.querySelectorAll('button').forEach(b=>{const active=Number(b.dataset.horizon)===h;b.classList.toggle('selected',active);b.setAttribute('aria-pressed',String(active))});
+  output.replaceChildren();
+  const time=targetTimes.find(t=>t.h===h).time;
+  const subtitle=document.createElement('p');subtitle.className='notice';subtitle.textContent='Previsione per '+time.replace('T',' alle ');output.append(subtitle);
+  const values=good.map(g=>({name:g.name,...g.values.find(v=>v.h===h)}));
+  const t=values.map(v=>v.temp).filter(Number.isFinite),r=values.map(v=>v.rain).filter(Number.isFinite),w=values.map(v=>v.wind).filter(Number.isFinite);
+  if(t.length>=3){
+   const panel=document.createElement('div');panel.className='panel consensus';
+   const heading=document.createElement('strong');heading.textContent='Sintesi sperimentale · '+t.length+' modelli';panel.append(heading);
+   const temp=document.createElement('p');temp.textContent='Temperatura mediana: '+metric(median(t),' °C')+' · intervallo '+metric(Math.min(...t),' °C')+' – '+metric(Math.max(...t),' °C');panel.append(temp);
+   if(w.length>=3){const wind=document.createElement('p');wind.textContent='Vento mediano: '+metric(median(w),' km/h',0);panel.append(wind)}
+   if(r.length>=3){const rain=document.createElement('p');const wet=r.filter(x=>x>=0.1).length;rain.textContent='Pioggia nell’ora: '+wet+' modelli su '+r.length+' prevedono almeno 0,1 mm · accumulo mediano '+metric(median(r),' mm');panel.append(rain)}
+   const caveat=document.createElement('p');caveat.className='notice';caveat.textContent='Sintesi non calibrata: non sostituisce la previsione ufficiale. L’accordo tra modelli non è una probabilità di pioggia.';panel.append(caveat);output.append(panel);
+  }
+  values.forEach(v=>{const row=document.createElement('div');row.className='model';const name=document.createElement('span');name.textContent=v.name;const val=document.createElement('strong');val.textContent=metric(v.temp,'°C')+' · '+metric(v.rain,' mm')+' · '+metric(v.wind,' km/h',0);row.append(name,val);output.append(row)});
+  responses.forEach((r,i)=>{if(r.status==='fulfilled')return;const row=document.createElement('div');row.className='model';const name=document.createElement('span');name.textContent=FORECAST_MODELS[i][0];const val=document.createElement('strong');val.textContent='Non disponibile';row.append(name,val);output.append(row)});
+ }
+ HORIZONS.forEach(h=>{const b=document.createElement('button');b.type='button';b.dataset.horizon=String(h);b.textContent='+'+h+' h';b.addEventListener('click',()=>display(h));controls.append(b)});
+ el.append(controls,output);
+ const legend=document.createElement('p');legend.className='notice';legend.textContent='Ordine dei valori: temperatura · pioggia oraria · vento. I modelli possono avere risoluzioni diverse. I dati provengono da Open-Meteo, per uso privato non commerciale.';el.append(legend);
+ display(24);modelKey=key;
  }finally{modelBusy=false}
 }
 async function load(lat,lon,label){const id=++serial;$('status').textContent='Aggiornamento previsioni per '+label+'…';$('error').classList.add('hide');try{const data=await get(url(lat,lon));if(id!==serial)return;render(data,label);$('status').textContent='Previsioni aggiornate · '+new Date().toLocaleTimeString('it-IT',{hour:'2-digit',minute:'2-digit'});modelCoords=[lat,lon];modelKey="";if($("tab-modelli").getAttribute("aria-selected")==="true")models(lat,lon,id).catch(()=>{});}catch(e){if(id!==serial)return;$('status').textContent='Impossibile aggiornare le previsioni';$('error').textContent=e.message+'; controlla la connessione e riprova.';$('error').classList.remove('hide')}}
