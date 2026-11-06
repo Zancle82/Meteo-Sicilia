@@ -70,6 +70,7 @@ function renderCharts(hourly,start){
 
 const FORECAST_MODELS=[['ECMWF IFS','ecmwf_ifs'],['ECMWF AIFS (AI)','ecmwf_aifs025_single'],['NOAA GFS','gfs_seamless'],['DWD ICON Europa','icon_eu'],['Météo-France ARPEGE','meteofrance_arpege_europe'],['Canada GEM','gem_global'],['ItaliaMeteo ICON-2I','italia_meteo_arpae_icon_2i']];
 let modelCoords=[...places.Messina],modelKey='',modelBusy=false,modelRequest=0;
+const modelCache=new Map();const MODEL_CACHE_MS=20*60*1000;
 const HORIZONS=[6,12,24,48,72];
 const median=values=>{const a=values.filter(Number.isFinite).sort((x,y)=>x-y);if(!a.length)return null;const i=Math.floor(a.length/2);return a.length%2?a[i]:(a[i-1]+a[i])/2};
 const metric=(n,unit,digits=1)=>Number.isFinite(n)?n.toFixed(digits)+unit:'—';
@@ -85,12 +86,15 @@ async function models(lat,lon,id){
  try{
  const responses=await Promise.allSettled(FORECAST_MODELS.map(async ([name,model])=>{
   const mu=new URL(u);mu.searchParams.set('models',model);
-  const d=await get(mu.toString()),hourly=d.hourly||{},times=hourly.time||[];
+  const cacheKey=key+'|'+model;let d;const cached=modelCache.get(cacheKey);
+  if(cached&&Date.now()-cached.saved<MODEL_CACHE_MS)d=cached.data;
+  else{d=await get(mu.toString());modelCache.set(cacheKey,{saved:Date.now(),data:d})}
+  const hourly=d.hourly||{},times=hourly.time||[];
   const field=base=>hourly[base]||hourly[base+'_'+model]||Object.entries(hourly).find(([k,v])=>k.startsWith(base+'_')&&Array.isArray(v))?.[1]||[];
   const temp=field('temperature_2m'),rain=field('precipitation'),wind=field('wind_speed_10m');
   const values=targetTimes.map(({h,time})=>{const i=nearest(times,time);return {h,temp:i>=0?temp[i]:null,rain:i>=0?rain[i]:null,wind:i>=0?wind[i]:null}});
   if(!values.some(v=>Number.isFinite(v.temp)))throw Error('Nessun dato');
-  return {name,model,values};
+  return {name,model,values,hourly:{times,temp,rain,wind}};
  }));
  if(id!==serial||request!==modelRequest)return;
  const good=responses.filter(r=>r.status==='fulfilled').map(r=>r.value);
@@ -120,7 +124,38 @@ async function models(lat,lon,id){
  HORIZONS.forEach(h=>{const b=document.createElement('button');b.type='button';b.dataset.horizon=String(h);b.textContent='+'+h+' h';b.addEventListener('click',()=>display(h));controls.append(b)});
  el.append(controls,output);
  const legend=document.createElement('p');legend.className='notice';legend.textContent='Ordine dei valori: temperatura · pioggia oraria · vento. I modelli possono avere risoluzioni diverse. I dati provengono da Open-Meteo, per uso privato non commerciale.';el.append(legend);
- display(24);modelKey=key;
+ display(24);
+ // Experimental hourly multimodel forecast, based on the same responses already downloaded.
+ const hourlySection=document.createElement('section');hourlySection.className='section';
+ const hourlyTitle=document.createElement('h2');hourlyTitle.textContent='Previsione multimodello oraria · 72 ore';
+ const hourlyInfo=document.createElement('p');hourlyInfo.className='notice';
+ hourlyInfo.textContent='Mediana non calibrata dei modelli disponibili per ciascuna ora. Gli intervalli indicano la dispersione delle temperature, non l’incertezza statistica. La pioggia è un accumulo orario, non una probabilità.';
+ const dayPicker=document.createElement('div');dayPicker.className='horizon-controls';
+ const tableWrap=document.createElement('div');tableWrap.style.overflowX='auto';
+ const tbl=document.createElement('table');tbl.className='hourly-model-table';
+ tbl.innerHTML='<thead><tr><th>Ora</th><th>Temp.</th><th>Intervallo</th><th>Vento</th><th>Pioggia</th><th>Modelli pioggia</th><th>N</th></tr></thead><tbody></tbody>';
+ tableWrap.append(tbl);hourlySection.append(hourlyTitle,hourlyInfo,dayPicker,tableWrap);el.append(hourlySection);
+ const firstTimes=good.flatMap(g=>g.hourly.times).filter(Boolean).sort();
+ const uniqueTimes=[...new Set(firstTimes)].filter(t=>Date.parse(t)>=Date.now()-3600000).slice(0,73);
+ const byDate=new Map();
+ uniqueTimes.forEach(t=>{const day=t.slice(0,10);if(!byDate.has(day))byDate.set(day,[]);byDate.get(day).push(t)});
+ const lookup=good.map(g=>({name:g.name,map:new Map(g.hourly.times.map((t,i)=>[t,{temp:g.hourly.temp[i],rain:g.hourly.rain[i],wind:g.hourly.wind[i]}]))}));
+ function renderDay(day){
+  dayPicker.querySelectorAll('button').forEach(b=>{const on=b.dataset.day===day;b.classList.toggle('selected',on);b.setAttribute('aria-pressed',String(on))});
+  const body=tbl.querySelector('tbody');body.replaceChildren();
+  (byDate.get(day)||[]).forEach(time=>{
+   const v=lookup.map(g=>g.map.get(time)).filter(Boolean);
+   const temps=v.map(x=>x.temp).filter(Number.isFinite),winds=v.map(x=>x.wind).filter(Number.isFinite),rains=v.map(x=>x.rain).filter(Number.isFinite);
+   if(temps.length<3)return;
+   const row=document.createElement('tr');
+   const fields=[time.slice(11,16),metric(median(temps),'°C'),metric(Math.min(...temps),'°',0)+'–'+metric(Math.max(...temps),'°',0),metric(median(winds),' km/h',0),metric(median(rains),' mm'),rains.filter(x=>x>=0.1).length+'/'+rains.length,String(temps.length)];
+   fields.forEach(value=>{const cell=document.createElement('td');cell.textContent=value;row.append(cell)});body.append(row);
+  });
+  if(!body.children.length){const row=document.createElement('tr');const td=document.createElement('td');td.colSpan=7;td.textContent='Dati orari insufficienti per questo giorno.';row.append(td);body.append(row)}
+ }
+ [...byDate.keys()].slice(0,4).forEach((day,i)=>{const b=document.createElement('button');b.type='button';b.dataset.day=day;b.textContent=i===0?'Oggi':new Date(day+'T12:00:00').toLocaleDateString('it-IT',{weekday:'short',day:'numeric'});b.addEventListener('click',()=>renderDay(day));dayPicker.append(b)});
+ if(byDate.size)renderDay([...byDate.keys()][0]);
+ modelKey=key;
  }finally{modelBusy=false}
 }
 async function load(lat,lon,label){const id=++serial;$('status').textContent='Aggiornamento previsioni per '+label+'…';$('error').classList.add('hide');try{const data=await get(url(lat,lon));if(id!==serial)return;render(data,label);$('status').textContent='Previsioni aggiornate · '+new Date().toLocaleTimeString('it-IT',{hour:'2-digit',minute:'2-digit'});modelCoords=[lat,lon];modelKey="";if($("tab-modelli").getAttribute("aria-selected")==="true")models(lat,lon,id).catch(()=>{});}catch(e){if(id!==serial)return;$('status').textContent='Impossibile aggiornare le previsioni';$('error').textContent=e.message+'; controlla la connessione e riprova.';$('error').classList.remove('hide')}}
