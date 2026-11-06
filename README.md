@@ -1,1 +1,5 @@
-Meteo Sicilia Beta 0.8 — test privato\n\nAggiunta tabella multimodello oraria fino a circa 72 ore, con temperatura mediana, intervallo, vento, precipitazioni e numero di modelli disponibili. Usa le stesse sette richieste del confronto già presente e conserva in memoria le risposte per 20 minuti. Le previsioni principali, i grafici e la stazione Ecowitt non sono stati modificati.\n\nI valori combinati non sono calibrati né validati e non costituiscono probabilità di pioggia. Open-Meteo: uso non commerciale secondo termini applicabili.\n
+Meteo Sicilia Beta 0.8.1 — test privato
+
+Novità: schede orarie verticali leggibili su smartphone, grafico SVG della temperatura mediana per giorno, miglioramento della leggibilità delle righe dei modelli. Conservati i sette modelli e il calcolo della versione 0.8, le previsioni principali, Ecowitt e la cache.
+
+La previsione multimodello è sperimentale, non calibrata. Non sostituisce gli avvisi ufficiali. Open-Meteo: rispettare i termini per uso non commerciale.

@@ -131,27 +131,50 @@ async function models(lat,lon,id){
  const hourlyInfo=document.createElement('p');hourlyInfo.className='notice';
  hourlyInfo.textContent='Mediana non calibrata dei modelli disponibili per ciascuna ora. Gli intervalli indicano la dispersione delle temperature, non l’incertezza statistica. La pioggia è un accumulo orario, non una probabilità.';
  const dayPicker=document.createElement('div');dayPicker.className='horizon-controls';
- const tableWrap=document.createElement('div');tableWrap.style.overflowX='auto';
- const tbl=document.createElement('table');tbl.className='hourly-model-table';
- tbl.innerHTML='<thead><tr><th>Ora</th><th>Temp.</th><th>Intervallo</th><th>Vento</th><th>Pioggia</th><th>Modelli pioggia</th><th>N</th></tr></thead><tbody></tbody>';
- tableWrap.append(tbl);hourlySection.append(hourlyTitle,hourlyInfo,dayPicker,tableWrap);el.append(hourlySection);
+ const chartPanel=document.createElement('div');chartPanel.className='multimodel-chart';
+ const chartCaption=document.createElement('p');chartCaption.className='notice';chartCaption.textContent='Temperatura mediana oraria (°C) · grafico del giorno selezionato';
+ const cards=document.createElement('div');cards.className='hourly-cards';
+ chartPanel.append(chartCaption);
+ hourlySection.append(hourlyTitle,hourlyInfo,dayPicker,chartPanel,cards);el.append(hourlySection);
  const firstTimes=good.flatMap(g=>g.hourly.times).filter(Boolean).sort();
  const uniqueTimes=[...new Set(firstTimes)].filter(t=>Date.parse(t)>=Date.now()-3600000).slice(0,73);
  const byDate=new Map();
  uniqueTimes.forEach(t=>{const day=t.slice(0,10);if(!byDate.has(day))byDate.set(day,[]);byDate.get(day).push(t)});
  const lookup=good.map(g=>({name:g.name,map:new Map(g.hourly.times.map((t,i)=>[t,{temp:g.hourly.temp[i],rain:g.hourly.rain[i],wind:g.hourly.wind[i]}]))}));
+ function svgNode(tag,attrs={}){const el=document.createElementNS('http://www.w3.org/2000/svg',tag);Object.entries(attrs).forEach(([k,v])=>el.setAttribute(k,String(v)));return el}
+ function drawChart(points){
+  chartPanel.querySelector('svg')?.remove();
+  if(points.length<2)return;
+  const svg=svgNode('svg',{viewBox:'0 0 340 142',role:'img','aria-label':'Andamento della temperatura mediana nel giorno selezionato'});
+  const min=Math.floor(Math.min(...points.map(x=>x.temp))-1),max=Math.ceil(Math.max(...points.map(x=>x.temp))+1);
+  const y=v=>114-(v-min)/(max-min||1)*90;
+  for(let i=0;i<3;i++){const val=min+(max-min)*i/2;const yy=y(val);svg.append(svgNode('line',{x1:37,y1:yy,x2:333,y2:yy,stroke:'#466481','stroke-width':0.7}));const label=svgNode('text',{x:3,y:yy+4,fill:'#c4d9ea','font-size':11});label.textContent=val.toFixed(0)+'°';svg.append(label)}
+  const x=i=>37+i*296/(points.length-1);
+  const path=points.map((pt,i)=>(i?'L':'M')+x(i).toFixed(1)+' '+y(pt.temp).toFixed(1)).join(' ');
+  svg.append(svgNode('path',{d:path,fill:'none',stroke:'#83d4ff','stroke-width':2.6,'stroke-linecap':'round','stroke-linejoin':'round'}));
+  [0,Math.floor((points.length-1)/2),points.length-1].forEach(i=>{const t=svgNode('text',{x:x(i),y:135,fill:'#b5cee5','font-size':11,'text-anchor':i===0?'start':i===points.length-1?'end':'middle'});t.textContent=points[i].time.slice(11,16);svg.append(t)});
+  chartPanel.append(svg);
+ }
  function renderDay(day){
   dayPicker.querySelectorAll('button').forEach(b=>{const on=b.dataset.day===day;b.classList.toggle('selected',on);b.setAttribute('aria-pressed',String(on))});
-  const body=tbl.querySelector('tbody');body.replaceChildren();
+  cards.replaceChildren();const graphPoints=[];
   (byDate.get(day)||[]).forEach(time=>{
-   const v=lookup.map(g=>g.map.get(time)).filter(Boolean);
-   const temps=v.map(x=>x.temp).filter(Number.isFinite),winds=v.map(x=>x.wind).filter(Number.isFinite),rains=v.map(x=>x.rain).filter(Number.isFinite);
+   const values=lookup.map(g=>g.map.get(time)).filter(Boolean);
+   const temps=values.map(x=>x.temp).filter(Number.isFinite),winds=values.map(x=>x.wind).filter(Number.isFinite),rains=values.map(x=>x.rain).filter(Number.isFinite);
    if(temps.length<3)return;
-   const row=document.createElement('tr');
-   const fields=[time.slice(11,16),metric(median(temps),'°C'),metric(Math.min(...temps),'°',0)+'–'+metric(Math.max(...temps),'°',0),metric(median(winds),' km/h',0),metric(median(rains),' mm'),rains.filter(x=>x>=0.1).length+'/'+rains.length,String(temps.length)];
-   fields.forEach(value=>{const cell=document.createElement('td');cell.textContent=value;row.append(cell)});body.append(row);
+   const medianTemp=median(temps);graphPoints.push({time,temp:medianTemp});
+   const card=document.createElement('article');card.className='hourly-forecast-card';
+   const header=document.createElement('div');header.className='hourly-card-header';
+   const timeLabel=document.createElement('strong');timeLabel.textContent=time.slice(11,16);
+   const temperature=document.createElement('strong');temperature.className='hourly-card-temperature';temperature.textContent=metric(medianTemp,'°C');
+   header.append(timeLabel,temperature);card.append(header);
+   const details=document.createElement('div');details.className='hourly-card-details';
+   const items=[['Intervallo',metric(Math.min(...temps),'°C')+' – '+metric(Math.max(...temps),'°C')],['Vento',winds.length?metric(median(winds),' km/h',0):'—'],['Pioggia',rains.length?metric(median(rains),' mm'):'—'],['Modelli con pioggia',rains.filter(x=>x>=0.1).length+' / '+rains.length],['Modelli disponibili',String(temps.length)+' / '+FORECAST_MODELS.length]];
+   items.forEach(([name,value])=>{const box=document.createElement('div');box.className='hourly-card-detail';const label=document.createElement('small');label.textContent=name;const strong=document.createElement('strong');strong.textContent=value;box.append(label,strong);details.append(box)});
+   card.append(details);cards.append(card);
   });
-  if(!body.children.length){const row=document.createElement('tr');const td=document.createElement('td');td.colSpan=7;td.textContent='Dati orari insufficienti per questo giorno.';row.append(td);body.append(row)}
+  if(!cards.children.length){const msg=document.createElement('p');msg.className='notice';msg.textContent='Dati orari insufficienti per questo giorno.';cards.append(msg)}
+  drawChart(graphPoints);
  }
  [...byDate.keys()].slice(0,4).forEach((day,i)=>{const b=document.createElement('button');b.type='button';b.dataset.day=day;b.textContent=i===0?'Oggi':new Date(day+'T12:00:00').toLocaleDateString('it-IT',{weekday:'short',day:'numeric'});b.addEventListener('click',()=>renderDay(day));dayPicker.append(b)});
  if(byDate.size)renderDay([...byDate.keys()][0]);
