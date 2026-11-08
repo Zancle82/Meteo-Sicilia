@@ -1,1 +1,19 @@
-{"name":"Meteo Sicilia","short_name":"Meteo Sicilia","description":"Previsioni meteorologiche siciliane e confronto modelli","lang":"it","start_url":"./index.html","scope":"./","display":"standalone","background_color":"#09192c","theme_color":"#0c1c32","icons":[{"src":"icon.svg","sizes":"any","type":"image/svg+xml","purpose":"any maskable"}]}
+{
+  "name": "Zancle Meteo",
+  "short_name": "Zancle Meteo",
+  "description": "Previsioni meteorologiche per la Sicilia, confronto modelli e stazioni",
+  "lang": "it",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#09192c",
+  "theme_color": "#0c1c32",
+  "icons": [
+    {
+      "src": "icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

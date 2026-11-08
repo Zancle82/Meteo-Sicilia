@@ -1,5 +1,7 @@
-Meteo Sicilia Beta 0.8.1 — test privato
+# Zancle Meteo — Beta 0.9 (test privato)
 
-Novità: schede orarie verticali leggibili su smartphone, grafico SVG della temperatura mediana per giorno, miglioramento della leggibilità delle righe dei modelli. Conservati i sette modelli e il calcolo della versione 0.8, le previsioni principali, Ecowitt e la cache.
+Novità: nuovo nome e icona SVG con Sicilia stilizzata; intestazione con monumenti stilizzati dei nove capoluoghi siciliani (cambio con la città selezionata). Per GPS e San Giovannello si mostra la versione generica. Collegamenti esterni a Windy e radar della Protezione Civile nella scheda Fonti. Il radar NON è ancora integrato direttamente: la disponibilità tecnica e le condizioni di riuso dei dati devono essere verificate.
 
-La previsione multimodello è sperimentale, non calibrata. Non sostituisce gli avvisi ufficiali. Open-Meteo: rispettare i termini per uso non commerciale.
+Conservati previsioni, sette modelli, grafici, confronto multimodello, stazione Ecowitt e schede esistenti. Open-Meteo: uso privato non commerciale.
+
+Caricare i sei file nella radice del repository GitHub sostituendo quelli precedenti; dopo la pubblicazione, ricaricare l'app o riaprirla per aggiornare la cache.
