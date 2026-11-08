@@ -320,6 +320,6 @@ const CITY_MONUMENTS={Messina:'Madonnina del Porto',Catania:'Elefante (Liotru)',
 function updateCityBrand(city){
  const caption=document.getElementById('monument-caption');
  document.querySelectorAll('#city-brand .landmark').forEach(el=>{el.style.display=el.dataset.city===city?'':'none'});
- if(caption)caption.textContent=CITY_MONUMENTS[city]||'Sicilia';
+ if(caption)caption.textContent='';
 }
 updateCityBrand('Messina');
