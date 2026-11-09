@@ -1,3 +1,3 @@
-Zancle Meteo Beta 0.9.3 — test privato
+Zancle Meteo Beta 0.9.5 — test privato
 
-Modifica esclusivamente grafica: sagoma della Sicilia della 0.9.2 invariata, scritta Zancle Meteo riposizionata all’interno, monumento della città selezionata esterno sulla destra. Nessun cambiamento alle previsioni, modelli o stazioni. Cache aggiornata.
+Modifica esclusiva alla Madonnina del Porto: rimosso il Bambino e ridisegnato il braccio sinistro della statua. Sagoma Sicilia, Liotru, altri monumenti, layout e funzioni meteorologiche invariati. Aggiornata la versione visualizzata e la cache del service worker.
