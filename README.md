@@ -1,3 +1,7 @@
-Zancle Meteo Beta 0.9.8 — Sole e Luna
+Zancle Meteo Beta 0.9.9 — test privato
 
-Aggiunti alba e tramonto del Sole (Open-Meteo) e sorgere e tramonto della Luna (calcolo astronomico approssimato), aggiornati per città o GPS. Conservati radar, sette modelli, stazioni e grafica. Gli orari lunari sono indicativi.
+Sole e Luna: API Sunrise-Sunset.org v2 per alba e tramonto di Sole e Luna, fase e percentuale illuminata. Disco lunare SVG dinamico. Fonte attribuita.
+
+Restano invariati radar RainViewer, sette modelli, Ecowitt, logo e previsioni.
+
+https://sunrise-sunset.org/api

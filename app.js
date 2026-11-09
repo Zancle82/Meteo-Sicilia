@@ -181,7 +181,7 @@ async function models(lat,lon,id){
  modelKey=key;
  }finally{modelBusy=false}
 }
-async function load(lat,lon,label){const id=++serial;$('status').textContent='Aggiornamento previsioni per '+label+'…';$('error').classList.add('hide');try{const data=await get(url(lat,lon));if(id!==serial)return;render(data,label);renderAstronomy(data,lat,lon);$('status').textContent='Previsioni aggiornate · '+new Date().toLocaleTimeString('it-IT',{hour:'2-digit',minute:'2-digit'});modelCoords=[lat,lon];modelKey="";if($("tab-modelli").getAttribute("aria-selected")==="true")models(lat,lon,id).catch(()=>{});}catch(e){if(id!==serial)return;$('status').textContent='Impossibile aggiornare le previsioni';$('error').textContent=e.message+'; controlla la connessione e riprova.';$('error').classList.remove('hide')}}
+async function load(lat,lon,label){const id=++serial;$('status').textContent='Aggiornamento previsioni per '+label+'…';$('error').classList.add('hide');try{const data=await get(url(lat,lon));if(id!==serial)return;render(data,label);renderAstronomy(data,lat,lon,id).catch(()=>{});$('status').textContent='Previsioni aggiornate · '+new Date().toLocaleTimeString('it-IT',{hour:'2-digit',minute:'2-digit'});modelCoords=[lat,lon];modelKey="";if($("tab-modelli").getAttribute("aria-selected")==="true")models(lat,lon,id).catch(()=>{});}catch(e){if(id!==serial)return;$('status').textContent='Impossibile aggiornare le previsioni';$('error').textContent=e.message+'; controlla la connessione e riprova.';$('error').classList.remove('hide')}}
 $('city').addEventListener('change',e=>{const name=e.target.value;if(places[name])load(...places[name],name)});
 $('gps').addEventListener('click',()=>{if(!navigator.geolocation){$('status').textContent='GPS non supportato dal browser';return}$('status').textContent='Richiesta posizione GPS…';navigator.geolocation.getCurrentPosition(p=>{const {latitude:lat,longitude:lon}=p.coords;if(lat<35.4||lat>39.0||lon<11.8||lon>16.0){$('status').textContent='La posizione sembra fuori dall’area siciliana. Scegli una città.';return}$('city').value='gps';load(lat,lon,'Posizione GPS')},()=>{$('status').textContent='Posizione non disponibile. Puoi scegliere una città.'},{enableHighAccuracy:true,timeout:12000,maximumAge:600000})});
 if('serviceWorker'in navigator&&location.protocol==='https:')navigator.serviceWorker.register('./sw.js').catch(()=>{});
@@ -324,15 +324,64 @@ function updateCityBrand(city){
 }
 updateCityBrand('Messina');
 
-// Astronomy: solar events from Open-Meteo; lunar rise/set computed locally (no key or third-party service).
-function renderAstronomy(data,lat,lon){
+// Astronomical events: Sunrise-Sunset.org API v2 (local Italian time, no API key).
+// The service supplies rise/set, phase and illumination together; no estimated lunar times.
+const astroCache=new Map();
+const moonNames={'New Moon':'Luna nuova','Waxing Crescent':'Falce crescente','First Quarter':'Primo quarto','Waxing Gibbous':'Gibbosa crescente','Full Moon':'Luna piena','Waning Gibbous':'Gibbosa calante','Last Quarter':'Ultimo quarto','Waning Crescent':'Falce calante'};
+function moonPhaseSVG(fraction,waxing){
+ const f=Math.max(0,Math.min(1,Number(fraction)/100));
+ const svgNS='http://www.w3.org/2000/svg';
+ const svg=document.createElementNS(svgNS,'svg');svg.setAttribute('viewBox','0 0 100 100');svg.setAttribute('width','82');svg.setAttribute('height','82');svg.setAttribute('role','img');svg.setAttribute('aria-label','Disco lunare illuminato al '+Math.round(f*100)+'%');
+ const disc=document.createElementNS(svgNS,'circle');disc.setAttribute('cx','50');disc.setAttribute('cy','50');disc.setAttribute('r','44');disc.setAttribute('fill','#102238');disc.setAttribute('stroke','#7897b3');disc.setAttribute('stroke-width','1.5');svg.append(disc);
+ // The bright region is bounded by the outer lunar limb and an elliptical terminator.
+ const coords=[];const N=64;
+ for(let i=0;i<=N;i++){
+  const y=-44+88*i/N;const r=Math.sqrt(Math.max(0,44*44-y*y));
+  const xOuter=waxing?r:-r;
+  coords.push([50+xOuter,50+y]);
+ }
+ for(let i=N;i>=0;i--){
+  const y=-44+88*i/N;const r=Math.sqrt(Math.max(0,44*44-y*y));
+  const terminator=(waxing?1:-1)*(1-2*f)*r;
+  coords.push([50+terminator,50+y]);
+ }
+ const path=document.createElementNS(svgNS,'path');path.setAttribute('d','M'+coords.map(pt=>pt.map(n=>n.toFixed(2)).join(',')).join(' L')+' Z');path.setAttribute('fill','#f0e9d7');svg.append(path);
+ return svg;
+}
+async function renderAstronomy(data,lat,lon,id){
  const grid=$('astro-grid'),note=$('astro-note');if(!grid)return;
- const day=data.daily?.time?.[0];
- const fmtTime=v=>typeof v==='string'&&v.includes('T')?v.slice(11,16):'—';
- const moon=day?moonEventsForDate(day,lat,lon):{};
- const entries=[['🌅','Alba del Sole',fmtTime(data.daily?.sunrise?.[0])],['🌇','Tramonto del Sole',fmtTime(data.daily?.sunset?.[0])],['🌙','Sorgere della Luna',moon.rise||'Non oggi'],['🌘','Tramonto della Luna',moon.set||'Non oggi']];
- grid.replaceChildren(...entries.map(([emoji,label,value])=>{const item=document.createElement('div');item.className='astro-item';const small=document.createElement('small');small.textContent=emoji+' '+label;const strong=document.createElement('strong');strong.textContent=value;item.append(small,strong);return item}));
- note.textContent='Orari locali (Italia) · '+(day?new Date(day+'T12:00:00').toLocaleDateString('it-IT',{day:'numeric',month:'long',year:'numeric'}):'oggi')+' · Luna: calcolo astronomico approssimato. “Non oggi” indica che l’evento non avviene in questa giornata.';
+ const day=data.daily?.time?.[0];if(!day)return;
+ grid.textContent='Caricamento dati astronomici…';note.textContent='Fonte: Sunrise-Sunset.org';
+ const key=[lat.toFixed(4),lon.toFixed(4),day].join(':');
+ try{
+  let record=astroCache.get(key);
+  if(!record){
+   const u=new URL('https://api.sunrise-sunset.org/v2');
+   u.searchParams.set('lat',lat);u.searchParams.set('lng',lon);u.searchParams.set('date',day);u.searchParams.set('tz','Europe/Rome');
+   const response=await fetch(u.toString());if(!response.ok)throw Error('HTTP '+response.status);
+   record=await response.json();if(!record||!record.sunrise||!('moon_phase' in record))throw Error('Risposta incompleta');
+   astroCache.set(key,record);
+  }
+  if(id!==serial)return;
+  const fmtTime=v=>v?new Intl.DateTimeFormat('it-IT',{timeZone:'Europe/Rome',hour:'2-digit',minute:'2-digit',hourCycle:'h23'}).format(new Date(v)):'Non oggi';
+  const entries=[['🌅','Alba del Sole',fmtTime(record.sunrise)],['🌇','Tramonto del Sole',fmtTime(record.sunset)],['🌙','Sorgere della Luna',fmtTime(record.moonrise)],['🌘','Tramonto della Luna',fmtTime(record.moonset)]];
+  grid.replaceChildren(...entries.map(([emoji,label,value])=>{const item=document.createElement('div');item.className='astro-item';const small=document.createElement('small');small.textContent=emoji+' '+label;const strong=document.createElement('strong');strong.textContent=value;item.append(small,strong);return item}));
+  const phase=record.moon_phase;const illuminated=Number(record.moon_illumination);
+  if(Number.isFinite(illuminated)&&moonNames[phase]){
+   const panel=document.createElement('div');panel.className='moon-phase-panel';
+   const visual=moonPhaseSVG(illuminated,phase.startsWith('Waxing')||phase==='First Quarter');
+   const label=document.createElement('div');label.className='moon-phase-copy';
+   const name=document.createElement('strong');name.textContent=moonNames[phase];
+   const pct=document.createElement('span');pct.textContent=illuminated.toLocaleString('it-IT',{maximumFractionDigits:0})+'% illuminata';
+   label.append(name,pct);panel.append(visual,label);grid.append(panel);
+  }
+  note.replaceChildren(document.createTextNode('Orari locali · '+new Date(day+'T12:00:00').toLocaleDateString('it-IT',{day:'numeric',month:'long',year:'numeric'})+' · Fase lunare calcolata a mezzogiorno. “Non oggi” indica che l’evento non avviene nella giornata. Fonte: '));
+  const link=document.createElement('a');link.href='https://sunrise-sunset.org/api';link.target='_blank';link.rel='noopener noreferrer';link.textContent='Sunrise-Sunset.org';note.append(link);
+ }catch(err){
+  if(id!==serial)return;
+  grid.replaceChildren();note.replaceChildren(document.createTextNode('Dati astronomici temporaneamente non disponibili. Verifica la connessione. Fonte: '));
+  const link=document.createElement('a');link.href='https://sunrise-sunset.org/api';link.textContent='Sunrise-Sunset.org';link.target='_blank';link.rel='noopener noreferrer';note.append(link);
+ }
 }
 // Lunar coordinates and atmospheric refraction, based on the standard low-precision astronomical formulae.
 function moonAltitude(date,lat,lon){
