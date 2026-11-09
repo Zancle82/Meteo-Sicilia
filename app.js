@@ -3,7 +3,7 @@ const places={Messina:[38.1938,15.5540],Palermo:[38.1157,13.3615],Catania:[37.50
 const $=id=>document.getElementById(id);const fmt=n=>Number.isFinite(n)?Math.round(n)+'°C':'—';
 const weatherCode=c=>{if(c===0)return ['Sereno','☀️'];if(c<=3)return ['Parzialmente nuvoloso','🌤️'];if(c===45||c===48)return ['Nebbia','🌫️'];if(c>=51&&c<=67)return ['Pioggia','🌧️'];if(c>=71&&c<=77)return ['Neve','🌨️'];if(c>=80&&c<=82)return ['Rovesci','🌦️'];if(c>=95)return ['Temporale','⛈️'];return ['Variabile','☁️']};
 const api='https://api.open-meteo.com/v1/forecast';let serial=0;
-function url(lat,lon,model){const u=new URL(api);const args={latitude:lat,longitude:lon,timezone:'Europe/Rome',forecast_days:7,current:'temperature_2m,relative_humidity_2m,wind_speed_10m,wind_gusts_10m,surface_pressure,apparent_temperature,precipitation,weather_code',hourly:'temperature_2m,precipitation_probability,wind_speed_10m,wind_gusts_10m,weather_code',daily:'weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max'};if(model)args.models=model;Object.entries(args).forEach(([k,v])=>u.searchParams.set(k,v));return u.toString()}
+function url(lat,lon,model){const u=new URL(api);const args={latitude:lat,longitude:lon,timezone:'Europe/Rome',forecast_days:7,current:'temperature_2m,relative_humidity_2m,wind_speed_10m,wind_gusts_10m,surface_pressure,apparent_temperature,precipitation,weather_code',hourly:'temperature_2m,precipitation_probability,wind_speed_10m,wind_gusts_10m,weather_code',daily:'weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max,sunrise,sunset'};if(model)args.models=model;Object.entries(args).forEach(([k,v])=>u.searchParams.set(k,v));return u.toString()}
 async function get(url){const r=await fetch(url);if(!r.ok)throw Error('Servizio meteo non disponibile ('+r.status+')');const j=await r.json();if(j.error)throw Error(j.reason||'Dati non disponibili');return j}
 function render(data,label){updateCityBrand(label);const c=data.current||{};$('place').textContent=label;$('temp').textContent=fmt(c.temperature_2m);$('description').textContent=weatherCode(c.weather_code)[0];$('humidity').textContent=Number.isFinite(c.relative_humidity_2m)?c.relative_humidity_2m+'%':'—';$('wind').textContent=Number.isFinite(c.wind_speed_10m)?Math.round(c.wind_speed_10m)+' km/h':'—';$('rain').textContent=Number.isFinite(c.precipitation)?c.precipitation+' mm':'—';$('pressure').textContent=Number.isFinite(c.surface_pressure)?Math.round(c.surface_pressure)+' hPa':'—';$('gust').textContent=Number.isFinite(c.wind_gusts_10m)?Math.round(c.wind_gusts_10m)+' km/h':'—';$('feels').textContent=fmt(c.apparent_temperature);const h=data.hourly||{},times=h.time||[];const now=(c.time||'').slice(0,13);let start=times.findIndex(t=>t.slice(0,13)>=now);if(start<0)start=0;renderCharts(h,start);$('hours').replaceChildren(...times.slice(start,start+12).map((t,k)=>{const i=start+k;const el=document.createElement('div');el.className='hour';el.innerHTML='<div></div><div class="symbol"></div><strong></strong><div class="muted"></div>';el.children[0].textContent=t.slice(11,16);el.children[1].textContent=weatherCode(h.weather_code?.[i])[1];el.children[2].textContent=fmt(h.temperature_2m?.[i]);el.children[3].textContent=(h.precipitation_probability?.[i]??'—')+'% ☔';return el}));const d=data.daily||{};$('days').replaceChildren(...(d.time||[]).map((date,i)=>{const el=document.createElement('div');el.className='day';const day=new Date(date+'T12:00:00').toLocaleDateString('it-IT',{weekday:'short',day:'numeric',month:'short'});const cells=[day,weatherCode(d.weather_code?.[i])[1],fmt(d.temperature_2m_max?.[i])+' / '+fmt(d.temperature_2m_min?.[i])+' · ☔ '+(d.precipitation_probability_max?.[i]??'—')+'%'];cells.forEach(t=>{const s=document.createElement('span');s.textContent=t;el.append(s)});return el}))}
 
@@ -181,7 +181,7 @@ async function models(lat,lon,id){
  modelKey=key;
  }finally{modelBusy=false}
 }
-async function load(lat,lon,label){const id=++serial;$('status').textContent='Aggiornamento previsioni per '+label+'…';$('error').classList.add('hide');try{const data=await get(url(lat,lon));if(id!==serial)return;render(data,label);$('status').textContent='Previsioni aggiornate · '+new Date().toLocaleTimeString('it-IT',{hour:'2-digit',minute:'2-digit'});modelCoords=[lat,lon];modelKey="";if($("tab-modelli").getAttribute("aria-selected")==="true")models(lat,lon,id).catch(()=>{});}catch(e){if(id!==serial)return;$('status').textContent='Impossibile aggiornare le previsioni';$('error').textContent=e.message+'; controlla la connessione e riprova.';$('error').classList.remove('hide')}}
+async function load(lat,lon,label){const id=++serial;$('status').textContent='Aggiornamento previsioni per '+label+'…';$('error').classList.add('hide');try{const data=await get(url(lat,lon));if(id!==serial)return;render(data,label);renderAstronomy(data,lat,lon);$('status').textContent='Previsioni aggiornate · '+new Date().toLocaleTimeString('it-IT',{hour:'2-digit',minute:'2-digit'});modelCoords=[lat,lon];modelKey="";if($("tab-modelli").getAttribute("aria-selected")==="true")models(lat,lon,id).catch(()=>{});}catch(e){if(id!==serial)return;$('status').textContent='Impossibile aggiornare le previsioni';$('error').textContent=e.message+'; controlla la connessione e riprova.';$('error').classList.remove('hide')}}
 $('city').addEventListener('change',e=>{const name=e.target.value;if(places[name])load(...places[name],name)});
 $('gps').addEventListener('click',()=>{if(!navigator.geolocation){$('status').textContent='GPS non supportato dal browser';return}$('status').textContent='Richiesta posizione GPS…';navigator.geolocation.getCurrentPosition(p=>{const {latitude:lat,longitude:lon}=p.coords;if(lat<35.4||lat>39.0||lon<11.8||lon>16.0){$('status').textContent='La posizione sembra fuori dall’area siciliana. Scegli una città.';return}$('city').value='gps';load(lat,lon,'Posizione GPS')},()=>{$('status').textContent='Posizione non disponibile. Puoi scegliere una città.'},{enableHighAccuracy:true,timeout:12000,maximumAge:600000})});
 if('serviceWorker'in navigator&&location.protocol==='https:')navigator.serviceWorker.register('./sw.js').catch(()=>{});
@@ -323,3 +323,48 @@ function updateCityBrand(city){
  if(caption)caption.textContent='';
 }
 updateCityBrand('Messina');
+
+// Astronomy: solar events from Open-Meteo; lunar rise/set computed locally (no key or third-party service).
+function renderAstronomy(data,lat,lon){
+ const grid=$('astro-grid'),note=$('astro-note');if(!grid)return;
+ const day=data.daily?.time?.[0];
+ const fmtTime=v=>typeof v==='string'&&v.includes('T')?v.slice(11,16):'—';
+ const moon=day?moonEventsForDate(day,lat,lon):{};
+ const entries=[['🌅','Alba del Sole',fmtTime(data.daily?.sunrise?.[0])],['🌇','Tramonto del Sole',fmtTime(data.daily?.sunset?.[0])],['🌙','Sorgere della Luna',moon.rise||'Non oggi'],['🌘','Tramonto della Luna',moon.set||'Non oggi']];
+ grid.replaceChildren(...entries.map(([emoji,label,value])=>{const item=document.createElement('div');item.className='astro-item';const small=document.createElement('small');small.textContent=emoji+' '+label;const strong=document.createElement('strong');strong.textContent=value;item.append(small,strong);return item}));
+ note.textContent='Orari locali (Italia) · '+(day?new Date(day+'T12:00:00').toLocaleDateString('it-IT',{day:'numeric',month:'long',year:'numeric'}):'oggi')+' · Luna: calcolo astronomico approssimato. “Non oggi” indica che l’evento non avviene in questa giornata.';
+}
+// Lunar coordinates and atmospheric refraction, based on the standard low-precision astronomical formulae.
+function moonAltitude(date,lat,lon){
+ const rad=Math.PI/180,d=(date.getTime()-Date.UTC(2000,0,1,12))/86400000;
+ const L=(218.316+13.176396*d)*rad,M=(134.963+13.064993*d)*rad,F=(93.272+13.229350*d)*rad;
+ const lambda=L+6.289*rad*Math.sin(M),beta=5.128*rad*Math.sin(F),eps=23.4397*rad;
+ const ra=Math.atan2(Math.sin(lambda)*Math.cos(eps)-Math.tan(beta)*Math.sin(eps),Math.cos(lambda));
+ const dec=Math.asin(Math.sin(beta)*Math.cos(eps)+Math.cos(beta)*Math.sin(eps)*Math.sin(lambda));
+ const sidereal=(280.16+360.9856235*d)*rad+lon*rad;
+ const phi=lat*rad,H=sidereal-ra;
+ return Math.asin(Math.sin(phi)*Math.sin(dec)+Math.cos(phi)*Math.cos(dec)*Math.cos(H));
+}
+function moonEventsForDate(day,lat,lon){
+ // Get the start of the given civil day in Europe/Rome (handles DST).
+ const noon=new Date(day+'T12:00:00Z');
+ const tzPart=new Intl.DateTimeFormat('en-GB',{timeZone:'Europe/Rome',timeZoneName:'shortOffset'}).formatToParts(noon).find(x=>x.type==='timeZoneName')?.value||'GMT+1';
+ const m=tzPart.match(/GMT([+-])(\d{1,2})(?::(\d{2}))?/);
+ const offset=m?(m[1]==='+'?1:-1)*(Number(m[2])*60+Number(m[3]||0)):60;
+ const start=Date.parse(day+'T00:00:00Z')-offset*60000;
+ const endDay=new Date(start+36*3600000);
+ const fmtDay=new Intl.DateTimeFormat('en-CA',{timeZone:'Europe/Rome',year:'numeric',month:'2-digit',day:'2-digit'});
+ const fmtClock=new Intl.DateTimeFormat('it-IT',{timeZone:'Europe/Rome',hour:'2-digit',minute:'2-digit',hourCycle:'h23'});
+ const result={};const threshold=0.133*Math.PI/180;
+ let previous=moonAltitude(new Date(start),lat,lon)-threshold;
+ for(let t=start+5*60000;t<=endDay.getTime();t+=5*60000){
+  const current=moonAltitude(new Date(t),lat,lon)-threshold;
+  if((previous<=0&&current>0)||(previous>=0&&current<0)){
+   const crossing=t-5*60000+5*60000*Math.abs(previous)/(Math.abs(previous)+Math.abs(current));
+   const when=new Date(crossing);
+   if(fmtDay.format(when)===day){const key=current>previous?'rise':'set';if(!result[key])result[key]=fmtClock.format(when)}
+  }
+  previous=current;
+ }
+ return result;
+}

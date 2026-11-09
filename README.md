@@ -1,5 +1,3 @@
-Zancle Meteo Beta 0.9.7 — correzione caricamento radar.
+Zancle Meteo Beta 0.9.8 — Sole e Luna
 
-Corretto index.html: aggiunti script Leaflet e radar.js mancanti nella 0.9.6. Aggiornata cache del service worker. Restano invariati i dati meteo, i modelli, le stazioni, i monumenti e la grafica.
-
-Il radar necessita connessione Internet e disponibilità dei servizi esterni; non è stato collaudato sul dispositivo Android.
+Aggiunti alba e tramonto del Sole (Open-Meteo) e sorgere e tramonto della Luna (calcolo astronomico approssimato), aggiornati per città o GPS. Conservati radar, sette modelli, stazioni e grafica. Gli orari lunari sono indicativi.
