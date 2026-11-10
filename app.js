@@ -330,23 +330,39 @@ const astroCache=new Map();
 const moonNames={'New Moon':'Luna nuova','Waxing Crescent':'Falce crescente','First Quarter':'Primo quarto','Waxing Gibbous':'Gibbosa crescente','Full Moon':'Luna piena','Waning Gibbous':'Gibbosa calante','Last Quarter':'Ultimo quarto','Waning Crescent':'Falce calante'};
 function moonPhaseSVG(fraction,waxing){
  const f=Math.max(0,Math.min(1,Number(fraction)/100));
- const svgNS='http://www.w3.org/2000/svg';
- const svg=document.createElementNS(svgNS,'svg');svg.setAttribute('viewBox','0 0 100 100');svg.setAttribute('width','82');svg.setAttribute('height','82');svg.setAttribute('role','img');svg.setAttribute('aria-label','Disco lunare illuminato al '+Math.round(f*100)+'%');
- const disc=document.createElementNS(svgNS,'circle');disc.setAttribute('cx','50');disc.setAttribute('cy','50');disc.setAttribute('r','44');disc.setAttribute('fill','#102238');disc.setAttribute('stroke','#7897b3');disc.setAttribute('stroke-width','1.5');svg.append(disc);
- // The bright region is bounded by the outer lunar limb and an elliptical terminator.
- const coords=[];const N=64;
- for(let i=0;i<=N;i++){
-  const y=-44+88*i/N;const r=Math.sqrt(Math.max(0,44*44-y*y));
-  const xOuter=waxing?r:-r;
-  coords.push([50+xOuter,50+y]);
+ const ns='http://www.w3.org/2000/svg';
+ const make=(tag,attrs)=>{const el=document.createElementNS(ns,tag);Object.entries(attrs).forEach(([k,v])=>el.setAttribute(k,String(v)));return el};
+ const svg=make('svg',{viewBox:'0 0 120 120',width:'116',height:'116',role:'img','aria-label':'Luna '+Math.round(f*100)+'% illuminata'});
+ const defs=make('defs',{});
+ const grad=make('radialGradient',{id:'zm-moon-lit',cx:'36%',cy:'35%',r:'75%'});
+ grad.append(make('stop',{offset:'0%','stop-color':'#f6f1e5'}),make('stop',{offset:'68%','stop-color':'#c4cbd0'}),make('stop',{offset:'100%','stop-color':'#8296a8'}));
+ defs.append(grad);
+ const clip=make('clipPath',{id:'zm-moon-clip'});clip.append(make('circle',{cx:60,cy:60,r:52}));defs.append(clip);svg.append(defs);
+ svg.append(make('circle',{cx:60,cy:60,r:52,fill:'#0b1b2c',stroke:'#819eb9','stroke-width':1.8}));
+ // Boundary is the visible limb and the terminator. For a new moon it collapses to zero area.
+ if(f>0.001){
+  const n=100,pts=[];
+  for(let i=0;i<=n;i++){const y=-52+104*i/n;const r=Math.sqrt(Math.max(0,52*52-y*y));pts.push([60+(waxing?r:-r),60+y])}
+  for(let i=n;i>=0;i--){const y=-52+104*i/n;const r=Math.sqrt(Math.max(0,52*52-y*y));pts.push([60+(waxing?1:-1)*(1-2*f)*r,60+y])}
+  const path=pts.map((pt,i)=>(i?'L':'M')+pt.map(x=>x.toFixed(2)).join(' ')).join(' ')+' Z';
+  const litClip=make('clipPath',{id:'zm-moon-litclip'});litClip.append(make('path',{d:path}));defs.append(litClip);
+  const lit=make('g',{'clip-path':'url(#zm-moon-litclip)'});
+  lit.append(make('circle',{cx:60,cy:60,r:52,fill:'url(#zm-moon-lit)'}));
+  // Subtle lunar maria and craters, clipped to the physically illuminated portion.
+  [[39,43,13],[80,56,15],[52,81,10],[75,28,7],[36,72,6]].forEach(([x,y,r])=>lit.append(make('circle',{cx:x,cy:y,r,fill:'#778796',opacity:'.18'})));
+  [[84,80,7],[43,28,5],[70,99,4],[94,44,4],[53,61,3]].forEach(([x,y,r])=>lit.append(make('circle',{cx:x,cy:y,r,fill:'none',stroke:'#ffffff','stroke-width':1,opacity:'.24'})));
+  svg.append(lit);
  }
- for(let i=N;i>=0;i--){
-  const y=-44+88*i/N;const r=Math.sqrt(Math.max(0,44*44-y*y));
-  const terminator=(waxing?1:-1)*(1-2*f)*r;
-  coords.push([50+terminator,50+y]);
- }
- const path=document.createElementNS(svgNS,'path');path.setAttribute('d','M'+coords.map(pt=>pt.map(n=>n.toFixed(2)).join(',')).join(' L')+' Z');path.setAttribute('fill','#f0e9d7');svg.append(path);
  return svg;
+}
+const mainMoonPhases={'New Moon':'Luna nuova','First Quarter':'Primo quarto','Full Moon':'Luna piena','Last Quarter':'Ultimo quarto'};
+function nextMoonPhase(days){
+ if(!Array.isArray(days))return null;
+ for(let i=1;i<days.length;i++){
+  const phase=days[i]?.moon_phase;
+  if(mainMoonPhases[phase] && days[i-1]?.moon_phase!==phase)return {name:mainMoonPhases[phase],date:days[i].date};
+ }
+ return null;
 }
 async function renderAstronomy(data,lat,lon,id){
  const grid=$('astro-grid'),note=$('astro-note');if(!grid)return;
@@ -357,9 +373,9 @@ async function renderAstronomy(data,lat,lon,id){
   let record=astroCache.get(key);
   if(!record){
    const u=new URL('https://api.sunrise-sunset.org/v2');
-   u.searchParams.set('lat',lat);u.searchParams.set('lng',lon);u.searchParams.set('date',day);u.searchParams.set('tz','Europe/Rome');
+   u.searchParams.set('lat',lat);u.searchParams.set('lng',lon);u.searchParams.set('date_start',day);const end=new Date(day+'T12:00:00Z');end.setUTCDate(end.getUTCDate()+35);u.searchParams.set('date_end',end.toISOString().slice(0,10));u.searchParams.set('tz','Europe/Rome');
    const response=await fetch(u.toString());if(!response.ok)throw Error('HTTP '+response.status);
-   record=await response.json();if(!record||!record.sunrise||!('moon_phase' in record))throw Error('Risposta incompleta');
+   const payload=await response.json();const days=payload.days;record=Array.isArray(days)?days.find(d=>d.date===day):payload;if(!record||!record.sunrise||!('moon_phase' in record))throw Error('Risposta incompleta');record={...record,nextPhase:nextMoonPhase(days)};
    astroCache.set(key,record);
   }
   if(id!==serial)return;
@@ -371,9 +387,11 @@ async function renderAstronomy(data,lat,lon,id){
    const panel=document.createElement('div');panel.className='moon-phase-panel';
    const visual=moonPhaseSVG(illuminated,phase.startsWith('Waxing')||phase==='First Quarter');
    const label=document.createElement('div');label.className='moon-phase-copy';
-   const name=document.createElement('strong');name.textContent=moonNames[phase];
-   const pct=document.createElement('span');pct.textContent=illuminated.toLocaleString('it-IT',{maximumFractionDigits:0})+'% illuminata';
-   label.append(name,pct);panel.append(visual,label);grid.append(panel);
+   const kicker=document.createElement('small');kicker.textContent='Fase lunare';const name=document.createElement('strong');name.textContent=moonNames[phase];
+   const pct=document.createElement('span');pct.textContent='Illuminazione: '+illuminated.toLocaleString('it-IT',{maximumFractionDigits:0})+'%';
+   label.append(kicker,name,pct);
+   if(record.nextPhase){const next=document.createElement('span');next.className='moon-next';const dt=new Date(record.nextPhase.date+'T12:00:00');next.textContent='Prossima fase principale: '+record.nextPhase.name+' · circa '+dt.toLocaleDateString('it-IT',{day:'numeric',month:'long'});label.append(next)}
+   panel.append(visual,label);grid.append(panel);
   }
   note.replaceChildren(document.createTextNode('Orari locali · '+new Date(day+'T12:00:00').toLocaleDateString('it-IT',{day:'numeric',month:'long',year:'numeric'})+' · Fase lunare calcolata a mezzogiorno. “Non oggi” indica che l’evento non avviene nella giornata. Fonte: '));
   const link=document.createElement('a');link.href='https://sunrise-sunset.org/api';link.target='_blank';link.rel='noopener noreferrer';link.textContent='Sunrise-Sunset.org';note.append(link);
