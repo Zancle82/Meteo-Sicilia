@@ -335,10 +335,10 @@ function moonPhaseSVG(fraction,waxing){
  const svg=make('svg',{viewBox:'0 0 120 120',width:'116',height:'116',role:'img','aria-label':'Luna '+Math.round(f*100)+'% illuminata'});
  const defs=make('defs',{});
  const grad=make('radialGradient',{id:'zm-moon-lit',cx:'36%',cy:'35%',r:'75%'});
- grad.append(make('stop',{offset:'0%','stop-color':'#f6f1e5'}),make('stop',{offset:'68%','stop-color':'#c4cbd0'}),make('stop',{offset:'100%','stop-color':'#8296a8'}));
+ grad.append(make('stop',{offset:'0%','stop-color':'#fffef4'}),make('stop',{offset:'68%','stop-color':'#e4e9eb'}),make('stop',{offset:'100%','stop-color':'#b9d5e8'}));
  defs.append(grad);
  const clip=make('clipPath',{id:'zm-moon-clip'});clip.append(make('circle',{cx:60,cy:60,r:52}));defs.append(clip);svg.append(defs);
- svg.append(make('circle',{cx:60,cy:60,r:52,fill:'#0b1b2c',stroke:'#819eb9','stroke-width':1.8}));
+ svg.append(make('circle',{cx:60,cy:60,r:52,fill:'#152e47',stroke:'#b0cee5','stroke-width':1.9}));
  // Boundary is the visible limb and the terminator. For a new moon it collapses to zero area.
  if(f>0.001){
   const n=100,pts=[];
@@ -352,17 +352,44 @@ function moonPhaseSVG(fraction,waxing){
   [[39,43,13],[80,56,15],[52,81,10],[75,28,7],[36,72,6]].forEach(([x,y,r])=>lit.append(make('circle',{cx:x,cy:y,r,fill:'#778796',opacity:'.18'})));
   [[84,80,7],[43,28,5],[70,99,4],[94,44,4],[53,61,3]].forEach(([x,y,r])=>lit.append(make('circle',{cx:x,cy:y,r,fill:'none',stroke:'#ffffff','stroke-width':1,opacity:'.24'})));
   svg.append(lit);
+  // A thin bright edge increases visibility of a 1% crescent without widening it.
+  if(f<0.045){const edge=make('path',{d:path,fill:'none',stroke:'#f6f8df','stroke-width':'0.7',opacity:'0.85'});svg.append(edge)}
  }
  return svg;
 }
-const mainMoonPhases={'New Moon':'Luna nuova','First Quarter':'Primo quarto','Full Moon':'Luna piena','Last Quarter':'Ultimo quarto'};
-function nextMoonPhase(days){
- if(!Array.isArray(days))return null;
- for(let i=1;i<days.length;i++){
-  const phase=days[i]?.moon_phase;
-  if(mainMoonPhases[phase] && days[i-1]?.moon_phase!==phase)return {name:mainMoonPhases[phase],date:days[i].date};
+// Exact UTC instants of primary phases, cross-checked against NASA SKYCAL 2026.
+// The calendar is independent of location; local display uses Europe/Rome.
+const verifiedPhases2026=[
+ ['2026-11-09T07:02:00Z','Luna nuova'],
+ ['2026-11-17T11:48:00Z','Primo quarto'],
+ ['2026-11-24T14:53:00Z','Luna piena'],
+ ['2026-12-01T06:09:00Z','Ultimo quarto'],
+ ['2026-12-09T00:52:00Z','Luna nuova'],
+ ['2026-12-17T05:43:00Z','Primo quarto'],
+ ['2026-12-24T01:28:00Z','Luna piena'],
+ ['2026-12-30T18:59:00Z','Ultimo quarto']
+].map(([utc,name])=>({date:new Date(utc),name,source:'NASA SKYCAL'}));
+const usnoPhaseNames={'New Moon':'Luna nuova','First Quarter':'Primo quarto','Full Moon':'Luna piena','Last Quarter':'Ultimo quarto'};
+const phaseCalendarCache=new Map();
+async function nextVerifiedMoonPhase(day){
+ const start=new Date(day+'T00:00:00Z');
+ const known=verifiedPhases2026.find(x=>x.date>start);
+ if(known)return known;
+ // USNO publishes exact UTC instants; browser access may depend on CORS.
+ const year=Number(day.slice(0,4));
+ if(!phaseCalendarCache.has(year)){
+  phaseCalendarCache.set(year,(async()=>{
+   const url='https://aa.usno.navy.mil/api/moon/phases/date?date='+encodeURIComponent(day)+'&nump=8';
+   const res=await fetch(url);if(!res.ok)throw Error('USNO unavailable');
+   const json=await res.json();
+   return (json.phasedata||[]).map(x=>{
+    const name=usnoPhaseNames[x.phase];
+    const date=new Date(Date.UTC(Number(x.year),Number(x.month)-1,Number(x.day),...String(x.time||'00:00').split(':').map(Number)));
+    return name&&!isNaN(date.getTime())?{name,date,source:'USNO'}:null;
+   }).filter(Boolean);
+  })().catch(()=>[]));
  }
- return null;
+ return (await phaseCalendarCache.get(year)).find(x=>x.date>start)||null;
 }
 async function renderAstronomy(data,lat,lon,id){
  const grid=$('astro-grid'),note=$('astro-note');if(!grid)return;
@@ -375,7 +402,7 @@ async function renderAstronomy(data,lat,lon,id){
    const u=new URL('https://api.sunrise-sunset.org/v2');
    u.searchParams.set('lat',lat);u.searchParams.set('lng',lon);u.searchParams.set('date_start',day);const end=new Date(day+'T12:00:00Z');end.setUTCDate(end.getUTCDate()+35);u.searchParams.set('date_end',end.toISOString().slice(0,10));u.searchParams.set('tz','Europe/Rome');
    const response=await fetch(u.toString());if(!response.ok)throw Error('HTTP '+response.status);
-   const payload=await response.json();const days=payload.days;record=Array.isArray(days)?days.find(d=>d.date===day):payload;if(!record||!record.sunrise||!('moon_phase' in record))throw Error('Risposta incompleta');record={...record,nextPhase:nextMoonPhase(days)};
+   const payload=await response.json();const days=payload.days;record=Array.isArray(days)?days.find(d=>d.date===day):payload;if(!record||!record.sunrise||!('moon_phase' in record))throw Error('Risposta incompleta');record={...record};
    astroCache.set(key,record);
   }
   if(id!==serial)return;
@@ -390,11 +417,14 @@ async function renderAstronomy(data,lat,lon,id){
    const kicker=document.createElement('small');kicker.textContent='Fase lunare';const name=document.createElement('strong');name.textContent=moonNames[phase];
    const pct=document.createElement('span');pct.textContent='Illuminazione: '+illuminated.toLocaleString('it-IT',{maximumFractionDigits:0})+'%';
    label.append(kicker,name,pct);
-   if(record.nextPhase){const next=document.createElement('span');next.className='moon-next';const dt=new Date(record.nextPhase.date+'T12:00:00');next.textContent='Prossima fase principale: '+record.nextPhase.name+' · circa '+dt.toLocaleDateString('it-IT',{day:'numeric',month:'long'});label.append(next)}
+   const nextPhase=await nextVerifiedMoonPhase(day);
+   if(id!==serial)return;
+   if(nextPhase){const next=document.createElement('span');next.className='moon-next';next.textContent='Prossima fase principale: '+nextPhase.name+' · '+nextPhase.date.toLocaleString('it-IT',{timeZone:'Europe/Rome',day:'numeric',month:'long',year:'numeric',hour:'2-digit',minute:'2-digit'})+' (ora italiana)';label.append(next)}
    panel.append(visual,label);grid.append(panel);
   }
   note.replaceChildren(document.createTextNode('Orari locali · '+new Date(day+'T12:00:00').toLocaleDateString('it-IT',{day:'numeric',month:'long',year:'numeric'})+' · Fase lunare calcolata a mezzogiorno. “Non oggi” indica che l’evento non avviene nella giornata. Fonte: '));
   const link=document.createElement('a');link.href='https://sunrise-sunset.org/api';link.target='_blank';link.rel='noopener noreferrer';link.textContent='Sunrise-Sunset.org';note.append(link);
+  const sep=document.createTextNode(' · Fasi principali: ');const cal=document.createElement('a');cal.href='https://eclipse.gsfc.nasa.gov/SKYCAL/SKYCAL.html?cal=2026';cal.target='_blank';cal.rel='noopener noreferrer';cal.textContent='NASA SKYCAL';note.append(sep,cal);
  }catch(err){
   if(id!==serial)return;
   grid.replaceChildren();note.replaceChildren(document.createTextNode('Dati astronomici temporaneamente non disponibili. Verifica la connessione. Fonte: '));

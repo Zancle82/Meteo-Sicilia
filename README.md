@@ -1,3 +1,1 @@
-Zancle Meteo Beta 1.0.0 — fase lunare migliorata, visualizzazione astronomica del disco e prossima fase principale indicativa.
-Fonte: Sunrise-Sunset.org v2. Conservate le altre funzioni della Beta 0.9.9.
-Caricare tutti e sette i file nella radice del repository GitHub.
+Zancle Meteo Beta 1.0.1 — correzione della prossima fase lunare con calendario NASA SKYCAL 2026 e API USNO per le date successive (se accessibile), migliore contrasto del disco lunare. Nessun cambiamento alle funzioni meteorologiche.
