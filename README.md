@@ -1,1 +1,1 @@
-Zancle Meteo Beta 1.0.1 — correzione della prossima fase lunare con calendario NASA SKYCAL 2026 e API USNO per le date successive (se accessibile), migliore contrasto del disco lunare. Nessun cambiamento alle funzioni meteorologiche.
+Zancle Meteo Beta 1.0.2 — Indice sperimentale di Scirocco nella scheda Modelli. Previsioni di pressione al livello del mare (Open-Meteo) per Atene, Heraklion, Cagliari e Alghero; gradiente Grecia meno Sardegna e grafico fino a 72 ore. Soglie indicative non validate, non è un'allerta meteo. Le funzioni preesistenti sono conservate.
