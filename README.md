@@ -1,1 +1,1 @@
-Zancle Meteo Beta 1.0.6 — Mappa reale OpenStreetMap dello Stretto di Messina nella scheda Mare. Località geografiche e legenda montante/scendente; nessuna corrente attuale o inversione inventata. Conservate le funzioni della 1.0.5. Mappa soggetta a disponibilità internet e termini di utilizzo delle tessere OpenStreetMap.
+Zancle Meteo Beta 1.0.7 — Miglioramenti esclusivamente grafici della mappa reale dello Stretto: etichette delle località e selettore di frecce schematiche montante/scendente. Nessun orario, velocità o stato corrente viene inventato. Base: Beta 1.0.6.
