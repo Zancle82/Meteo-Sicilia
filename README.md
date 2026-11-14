@@ -1,1 +1,1 @@
-Zancle Meteo Beta 1.0.5 — nuova scheda Neve: Etna, Nebrodi e Madonie, temperatura, neve prevista 24h e 72h, neve al suolo stimata, zero termico e vento da Open-Meteo. Stime modellistiche, non osservazioni o allerte ufficiali. Restano le funzioni precedenti.
+Zancle Meteo Beta 1.0.6 — Mappa reale OpenStreetMap dello Stretto di Messina nella scheda Mare. Località geografiche e legenda montante/scendente; nessuna corrente attuale o inversione inventata. Conservate le funzioni della 1.0.5. Mappa soggetta a disponibilità internet e termini di utilizzo delle tessere OpenStreetMap.
